@@ -49,7 +49,6 @@ install(PROGRAMS
   scripts/jump_point_planner.py
   scripts/occupancy_grid_parser.py
   scripts/mpc_planner_max_approx_cost_risk.py
-  scripts/mpc_planner_max_approx_cost.py
   scripts/a_star_planner.py
   DESTINATION lib/${PROJECT_NAME}
 )

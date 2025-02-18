@@ -23,9 +23,9 @@
   <depend>std_srvs</depend>
 
   <exec_depend>casadi</exec_depend>
-  <exec_depend>scipy</exec_depend>
-  <exec_depend>numpy</exec_depend>
-  <exec_depend>sklearn</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-sklearn</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

@@ -7,7 +7,7 @@
 #include <geometry_msgs/msg/point32.hpp>
 #include <custom_msgs_pkg/msg/polygon_array.hpp>
 #include <decomp_ros_msgs/msg/polyhedron_array.hpp>
-#include <visualization_msgs/visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker.hpp>
 #include <decomp_ros_util/data_ros_utils.hpp>
 #include <decomp_util/iterative_decomp.h>
 #include <pcl_conversions/pcl_conversions.h>

@@ -57,9 +57,9 @@ private:
     void riskMapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg){
         risk_map_ = msg;
         global_to_lower_left_ = reshape(DM({
-                                            risk_map_->info.origin.position.x,
-                                            risk_map_->info.origin.position.y,
-                                            0.0}), 3, 1);
+                                        risk_map_->info.origin.position.x,
+                                        risk_map_->info.origin.position.y,
+                                        0.0}), 3, 1);
         lower_left_to_risk_center_ = reshape(DM({
                                             risk_map_->info.height*risk_map_->info.resolution/2,
                                             risk_map_->info.width*risk_map_->info.resolution/2,
@@ -90,8 +90,8 @@ private:
         }
 
         vector<vector<double>> grid = {grid_x, grid_y};
-        // continuous_risk_map_ = interpolant("interp", "bspline", grid, risk_values, {{"degree", vector<int>{3, 3}}});
-        continuous_risk_map_ = interpolant("interp", "linear", grid, risk_values);
+        continuous_risk_map_ = interpolant("interp", "bspline", grid, risk_values, {{"degree", vector<int>{3, 3}}});
+        // continuous_risk_map_ = interpolant("interp", "linear", grid, risk_values);
     
         // test with dummy risk map node
         // vector<double> test_point1 = {0.8, 1.8};

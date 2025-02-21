@@ -24,6 +24,8 @@ public:
             "/Odometry", 10, bind(&MPCPlannerCorridors::odometryCallback, this, placeholders::_1));
         polygon_sub_ = this->create_subscription<custom_msgs_pkg::msg::PolygonArray>(
             "/convex_hulls", 10, bind(&MPCPlannerCorridors::polygonsCallback, this, placeholders::_1));
+        // risk_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
+        //     "/dummy_risk_map", 10, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
         risk_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             "/risk_map", 10, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
         path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
@@ -63,25 +65,64 @@ private:
                                             risk_map_->info.width*risk_map_->info.resolution/2,
                                             0.0}), 3, 1);
         global_risk_to_center_ = global_to_lower_left_ - lower_left_to_risk_center_;
-        
-        // vector<double> x_vector(risk_map_.info.width);
-        // vector<double> y_vector(risk_map_.info.height);
-        // for (size_t x = 0; x < risk_map_.info.width; ++x){
-        //     x_vector[x] = risk_map_.info.origin.position.x + x*risk_map_.info.resolution;
-        // } 
-        // for (size_t y = 0; y < risk_map_.info.height; ++y){
-        //     y_vector[y] = risk_map_.info.origin.position.y + y*risk_map_.info.resolution;
-        // } 
-        // vector<double> grid_coords;
-        // grid_coords.insert(grid_coords.end(), x_vector.begin(), x_vector.end());
-        // grid_coords.insert(grid_coords.end(), y_vector.begin(), y_vector.end());
-        
-        vector<double> risk_data_double(risk_map_->data.begin(), risk_map_->data.end());
-        vector<casadi_int> grid_dims = {static_cast<casadi_int>(risk_map_->info.width), 
-            static_cast<casadi_int>(risk_map_->info.height)};
-        
-        // need to get index position in order to query?
-        // Function risk_continuous = interpolant("continuous_risk_map", "bspline", grid_dims, risk_data_double);
+
+        int height = risk_map_->info.height;
+        int width = risk_map_->info.width;
+        double resolution = risk_map_->info.resolution;
+
+        vector<double> grid_x(height);
+        vector<double> grid_y(width);
+
+        for (int i = 0; i < height; i++) {
+            grid_x[i] = risk_map_->info.origin.position.x + (i + 0.5) * resolution;
+        }
+        for (int j = 0; j < width; j++) {
+            grid_y[j] = risk_map_->info.origin.position.y + (j + 0.5) * resolution;
+        }
+
+        vector<double> risk_values(width * height);
+        for (int j = 0; j < height; j++) {
+            for (int i = 0; i < width; i++) {
+            int idx = j * width + i;
+            int occ_value = risk_map_->data[idx];
+            risk_values[idx] = static_cast<double>(occ_value);
+            }
+        }
+
+        vector<vector<double>> grid = {grid_x, grid_y};
+        // continuous_risk_map_ = interpolant("interp", "bspline", grid, risk_values, {{"degree", vector<int>{3, 3}}});
+        continuous_risk_map_ = interpolant("interp", "linear", grid, risk_values);
+    
+        // test with dummy risk map node
+        // vector<double> test_point1 = {0.8, 1.8};
+        // DM query_point1 = DM(test_point1);
+        // DM output1 = continuous_risk_map_(query_point1);
+        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point1[0], test_point1[1], output1.get_str().c_str());
+
+        // vector<double> test_point2 = {3.8, 1.8};
+        // DM query_point2 = DM(test_point2);
+        // DM output2 = continuous_risk_map_(query_point2);
+        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point2[0], test_point2[1], output2.get_str().c_str());
+
+        // vector<double> test_point3 = {3.8, 9.7};
+        // DM query_point3 = DM(test_point3);
+        // DM output3 = continuous_risk_map_(query_point3);
+        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point3[0], test_point3[1], output3.get_str().c_str());
+
+        // vector<double> test_point4 = {0.9, 9.8};
+        // DM query_point4 = DM(test_point4);
+        // DM output4 = continuous_risk_map_(query_point4);
+        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point4[0], test_point4[1], output4.get_str().c_str());
+
+        // vector<double> test_point5 = {2.1, 5.9};
+        // DM query_point5 = DM(test_point5);
+        // DM output5 = continuous_risk_map_(query_point5);
+        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point5[0], test_point5[1], output5.get_str().c_str());
+
+        // vector<double> test_point6 = {8.1, 6.0};
+        // DM query_point6 = DM(test_point6);
+        // DM output6 = continuous_risk_map_(query_point6);
+        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point6[0], test_point6[1], output6.get_str().c_str());
     }
 
     void pathCallback(const nav_msgs::msg::Path::SharedPtr msg) {
@@ -138,17 +179,17 @@ private:
         const int N = 150;
         double dt = 0.1;
 
-        SX X = SX::sym("state_variables", 3, N + 1);
-        SX U = SX::sym("control_variables", 2, N);
+        MX X = MX::sym("state_variables", 3, N + 1);
+        MX U = MX::sym("control_variables", 2, N);
         RCLCPP_INFO(this->get_logger(), "X size1: %1lld", X.size1());
         RCLCPP_INFO(this->get_logger(), "X size2: %1lld", X.size2());
         RCLCPP_INFO(this->get_logger(), "U size1: %1lld", U.size1());
         RCLCPP_INFO(this->get_logger(), "U size2: %1lld", U.size2());
 
-        vector<SX> variables_list = {X, U};
+        vector<MX> variables_list = {X, U};
         vector<string> variables_name = {"states", "inputs"};
 
-        SX variables_flat = vertcat(reshape(X, X.size1()*X.size2(), 1), reshape(U, U.size1()*U.size2(), 1));
+        MX variables_flat = vertcat(reshape(X, X.size1()*X.size2(), 1), reshape(U, U.size1()*U.size2(), 1));
 
         Function pack_variables_fn = Function("pack_variables_fn", variables_list, {variables_flat}, variables_name, {"flat"});
         Function unpack_variables_fn = Function("unpack_variables_fn", {variables_flat}, variables_list, {"flat"}, variables_name);
@@ -158,11 +199,11 @@ private:
         RCLCPP_INFO(this->get_logger(), "Made Variables and Bound Arrays");
 
         // set initial and final state vectors
-        SX initial_state = reshape(SX(vector<double>{
+        DM initial_state = reshape(DM(vector<double>{
             odometry_->pose.pose.position.x, 
             odometry_->pose.pose.position.y, 
             yaw_from_quaternion(odometry_->pose.pose.orientation)}), 3, 1);
-        SX final_position = reshape(SX(goal_position), 2, 1);
+        DM final_position = reshape(DM(goal_position), 2, 1);
         RCLCPP_INFO(this->get_logger(), "Initial Pose: %s", initial_state.get_str().c_str());
         RCLCPP_INFO(this->get_logger(), "Final Pose: %s", final_position.get_str().c_str());
 
@@ -182,25 +223,30 @@ private:
         // state bounds
         lower_bounds[0](0, Slice()) = risk_map_->info.origin.position.x * DM::ones(1, lower_bounds[0].size2());
         lower_bounds[0](1, Slice()) = risk_map_->info.origin.position.y * DM::ones(1, lower_bounds[0].size2());
-        upper_bounds[0](0, Slice()) = (risk_map_->info.origin.position.x + risk_map_->info.resolution * risk_map_->info.height
-                                        ) * DM::ones(1, lower_bounds[0].size2());
-        upper_bounds[0](1, Slice()) = (risk_map_->info.origin.position.y + risk_map_->info.resolution * risk_map_->info.width
+        upper_bounds[0](0, Slice()) = (risk_map_->info.origin.position.x + 
+                                        risk_map_->info.resolution * risk_map_->info.height
+                                        ) *DM::ones(1, lower_bounds[0].size2());
+        upper_bounds[0](1, Slice()) = (risk_map_->info.origin.position.y + 
+                                        risk_map_->info.resolution * risk_map_->info.width
                                         ) * DM::ones(1, lower_bounds[0].size2());
 
         // running state cost, control cost, and risk cost
         vector<vector<double>> Q_vals = {{10, 0}, {0, 10}};
-        SX Q = SX(Q_vals);
+        DM Q = DM(Q_vals);
         vector<vector<double>> R_vals = {{1, 0}, {0, 1/pi}};
-        SX R = SX(R_vals);
+        DM R = DM(R_vals);
         RCLCPP_INFO(this->get_logger(), "Sanity Check: Q: %s", Q.get_str().c_str());
         RCLCPP_INFO(this->get_logger(), "Sanity Check: R: %s", R.get_str().c_str());
-        SX objective = 0.0;
+        MX objective = 0.0;
         for (int k=0; k < N; ++k){
-            SX state_penalty = X(Slice(0, 2), k) - final_position;
-            // SX state_penalty = X(Slice(0, 2), k) - X(Slice(0, 2), k+1);
-            SX control_penalty = U(Slice(), k);
+            MX position = X(Slice(0, 2), k);
+            MX risk_value = continuous_risk_map_(position)[0];
+            MX state_penalty = position - final_position;
+            // MX state_penalty = X(Slice(0, 2), k) - X(Slice(0, 2), k+1);
+            MX control_penalty = U(Slice(), k);
             objective = objective + mtimes(mtimes(state_penalty.T(), Q), state_penalty);
             objective = objective + mtimes(mtimes(control_penalty.T(), R), control_penalty);
+            objective = objective + risk_value;
         }   
         RCLCPP_INFO(this->get_logger(), "Sanity Check: X(Slice(0, 2), 3) size1: %1lld", X(Slice(0, 2), 3).size1());
         RCLCPP_INFO(this->get_logger(), "Sanity Check: X(Slice(0, 2), 3) size2: %1lld", X(Slice(0, 2), 3).size2());
@@ -210,32 +256,32 @@ private:
         RCLCPP_INFO(this->get_logger(), "Set Running State and Control Cost");
 
         // initial state constraint
-        SX initial_state_constraint = reshape(X(Slice(), 0) - initial_state, -1, 1);
+        MX initial_state_constraint = reshape(X(Slice(), 0) - initial_state, -1, 1);
         RCLCPP_INFO(this->get_logger(), "Initial state constraint size1: %1lld", initial_state_constraint.size1());
         RCLCPP_INFO(this->get_logger(), "Initial state constraint size2: %1lld", initial_state_constraint.size2());
         RCLCPP_INFO(this->get_logger(), "Set Initial State Constraint");
 
         // final state constraint
-        SX final_state_constraint = reshape(X(Slice(0, 2), N) - final_position, -1, 1);
+        MX final_state_constraint = reshape(X(Slice(0, 2), N) - final_position, -1, 1);
         RCLCPP_INFO(this->get_logger(), "Final state constraint size1: %1lld", final_state_constraint.size1());
         RCLCPP_INFO(this->get_logger(), "Final state constraint size2: %1lld", final_state_constraint.size2());
         RCLCPP_INFO(this->get_logger(), "Set Final State Constraint");
 
         // initial control constraint
-        SX initial_control_constraint = reshape(U(Slice(), 0), -1, 1);
+        MX initial_control_constraint = reshape(U(Slice(), 0), -1, 1);
         RCLCPP_INFO(this->get_logger(), "Initial Control Constraint size1: %1lld", initial_control_constraint.size1());
         RCLCPP_INFO(this->get_logger(), "Initial Control Constraint size2: %1lld", initial_control_constraint.size2());
         RCLCPP_INFO(this->get_logger(), "Set Initial Control Constraint");
 
         // final control constraint
-        SX final_control_constraint = reshape(U(Slice(), N-1), -1, 1);
+        MX final_control_constraint = reshape(U(Slice(), N-1), -1, 1);
         RCLCPP_INFO(this->get_logger(), "Final Control Constraint size1: %1lld", final_control_constraint.size1());
         RCLCPP_INFO(this->get_logger(), "Final Control Constraint size2: %1lld", final_control_constraint.size2());
         RCLCPP_INFO(this->get_logger(), "Set Final Control Constraint");
 
         // add acceleration constraint
-        SX v_dot_constraint = reshape((1/dt)*(U(0, Slice(1, N)) - U(0, Slice(0, N-1))), -1, 1);
-        SX r_dot_constraint = reshape((1/dt)*(U(1, Slice(1, N)) - U(1, Slice(0, N-1))), -1, 1);
+        MX v_dot_constraint = reshape((1/dt)*(U(0, Slice(1, N)) - U(0, Slice(0, N-1))), -1, 1);
+        MX r_dot_constraint = reshape((1/dt)*(U(1, Slice(1, N)) - U(1, Slice(0, N-1))), -1, 1);
         RCLCPP_INFO(this->get_logger(), "V_dot Constraint size1: %1lld", v_dot_constraint.size1());
         RCLCPP_INFO(this->get_logger(), "V_dot Constraint size2: %1lld", v_dot_constraint.size2());
         RCLCPP_INFO(this->get_logger(), "Set V_dot Constraint");
@@ -244,25 +290,25 @@ private:
         RCLCPP_INFO(this->get_logger(), "Set R_dot Constraint");
 
         // dynamics constraints
-        SX x_now = X(Slice(), Slice(0, N));
-        SX delta_x = dt * vertcat(
+        MX x_now = X(Slice(), Slice(0, N));
+        MX delta_x = dt * vertcat(
             U(0, Slice()) * cos(X(2, Slice(0, N))),
             U(0, Slice()) * sin(X(2, Slice(0, N))),
             U(1, Slice()));
-        SX x_next = x_now + delta_x;
+        MX x_next = x_now + delta_x;
         RCLCPP_INFO(this->get_logger(), "x_now size1: %1lld", x_now.size1());
         RCLCPP_INFO(this->get_logger(), "x_now size2: %1lld", x_now.size2());
         RCLCPP_INFO(this->get_logger(), "delta_x size1: %1lld", delta_x.size1());
         RCLCPP_INFO(this->get_logger(), "delta_x size2: %1lld", delta_x.size2());
 
-        SX dynamics_constraint = reshape(x_next - X(Slice(), Slice(1, N+1)), -1, 1);
+        MX dynamics_constraint = reshape(x_next - X(Slice(), Slice(1, N+1)), -1, 1);
         RCLCPP_INFO(this->get_logger(), "Dynamnics constraint size1: %1lld", dynamics_constraint.size1()); 
         RCLCPP_INFO(this->get_logger(), "Dynamnics constraint size2: %1lld", dynamics_constraint.size2()); 
         RCLCPP_INFO(this->get_logger(), "x_next: %s", x_next.get_str().c_str());
         RCLCPP_INFO(this->get_logger(), "Set Dynamics Constraint");
 
         // polyhedron constraints
-        vector<SX> polyhedron_constraint_vector;
+        vector<MX> polyhedron_constraint_vector;
         int last_k = 0;
         for(size_t i=0; i < polyhedrons.size(); ++i){
             int next_k = static_cast<int>(path_proportions[i] * N);
@@ -275,28 +321,28 @@ private:
                 for(Hyperplane2D hyperplane : hyperplanes){
                     Vec2f normal = hyperplane.n_;
                     Vec2f point = hyperplane.p_;
-                    SX value = normal[0]*(X(0, k) - point[0]) + normal[1]*(X(1, k) - point[1]);
+                    MX value = normal[0]*(X(0, k) - point[0]) + normal[1]*(X(1, k) - point[1]);
                     polyhedron_constraint_vector.push_back(value);
                 }
             }
             last_k = next_k;
         }
-        SX polyhedron_constraint = vertcat(polyhedron_constraint_vector);
+        MX polyhedron_constraint = vertcat(polyhedron_constraint_vector);
         RCLCPP_INFO(this->get_logger(), "Polyhedron constraint size1: %1lld", polyhedron_constraint.size1()); 
         RCLCPP_INFO(this->get_logger(), "Polyhedron constraint size2: %1lld", polyhedron_constraint.size2()); 
         RCLCPP_INFO(this->get_logger(), "Set Polyhedron Constraint");
         
-        SX equality_constraints = vertcat(
+        MX equality_constraints = vertcat(
             initial_state_constraint, 
             final_state_constraint,
             initial_control_constraint,
             final_control_constraint,
             dynamics_constraint,
             v_dot_constraint);
-        SX constraints = vertcat(equality_constraints, r_dot_constraint, polyhedron_constraint);
+        MX constraints = vertcat(equality_constraints, r_dot_constraint, polyhedron_constraint);
 
         // set up NLP solver and solve the program
-        Function solver = nlpsol("solver", "ipopt", SXDict{
+        Function solver = nlpsol("solver", "ipopt", MXDict{
             {"x", variables_flat},
             {"f", objective},
             {"g", constraints}
@@ -444,7 +490,6 @@ private:
     DM lower_left_to_risk_center_;
     DM global_risk_to_center_;
     Function continuous_risk_map_;
-    
 
     // casadi optimization relevant declarations
     Function pack_variables_fn_;

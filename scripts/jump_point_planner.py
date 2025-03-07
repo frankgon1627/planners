@@ -31,7 +31,7 @@ class JPSPlanner(Node):
         self.origin: Tuple[float, float] | None = None
         self.goal: PoseStamped | None = None
 
-        self.dialation: float = 0.25
+        self.dialation: float = 0.1
 
         self.directions: List[Tuple[int, int]] = [
             (1, 0), (-1, 0), (0, 1), (0, -1), 

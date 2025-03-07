@@ -181,10 +181,6 @@ private:
 
         MX X = MX::sym("state_variables", 3, N + 1);
         MX U = MX::sym("control_variables", 2, N);
-        RCLCPP_INFO(this->get_logger(), "X size1: %1lld", X.size1());
-        RCLCPP_INFO(this->get_logger(), "X size2: %1lld", X.size2());
-        RCLCPP_INFO(this->get_logger(), "U size1: %1lld", U.size1());
-        RCLCPP_INFO(this->get_logger(), "U size2: %1lld", U.size2());
 
         vector<MX> variables_list = {X, U};
         vector<string> variables_name = {"states", "inputs"};
@@ -210,14 +206,6 @@ private:
         // input bounds
         lower_bounds[1] = repmat(DM(vector<double>{0.0, -pi/4}), 1, lower_bounds[1].size2());
         upper_bounds[1] = repmat(DM(vector<double>{2.0, pi/4}), 1, upper_bounds[1].size2());
-        RCLCPP_INFO(this->get_logger(), "Lower_Bounds[1].rows(): %1lld", lower_bounds[1].size1());
-        RCLCPP_INFO(this->get_logger(), "Lower_Bounds[1].columns(): %1lld", lower_bounds[1].size2());
-        RCLCPP_INFO(this->get_logger(), "Lower_Bounds[1](0, 0): %s", lower_bounds[1](0, 0).get_str().c_str());
-        RCLCPP_INFO(this->get_logger(), "Lower_Bounds[1](1, 0): %s", lower_bounds[1](1, 0).get_str().c_str());
-        RCLCPP_INFO(this->get_logger(), "Upper_Bounds[1].rows(): %1lld", upper_bounds[1].size1());
-        RCLCPP_INFO(this->get_logger(), "Upper_Bounds[1].columns(): %1lld", upper_bounds[1].size2());
-        RCLCPP_INFO(this->get_logger(), "Upper_Bounds[1](0, 0): %s", upper_bounds[1](0, 0).get_str().c_str());
-        RCLCPP_INFO(this->get_logger(), "Upper_Bounds[1](1, 0): %s", upper_bounds[1](1, 0).get_str().c_str());
         RCLCPP_INFO(this->get_logger(), "Set Input Bounds");
 
         // state bounds
@@ -235,8 +223,6 @@ private:
         DM Q = DM(Q_vals);
         vector<vector<double>> R_vals = {{1, 0}, {0, 1/pi}};
         DM R = DM(R_vals);
-        RCLCPP_INFO(this->get_logger(), "Sanity Check: Q: %s", Q.get_str().c_str());
-        RCLCPP_INFO(this->get_logger(), "Sanity Check: R: %s", R.get_str().c_str());
         MX objective = 0.0;
         for (int k=0; k < N; ++k){
             MX position = X(Slice(0, 2), k);
@@ -248,45 +234,28 @@ private:
             objective = objective + mtimes(mtimes(control_penalty.T(), R), control_penalty);
             objective = objective + risk_value;
         }   
-        RCLCPP_INFO(this->get_logger(), "Sanity Check: X(Slice(0, 2), 3) size1: %1lld", X(Slice(0, 2), 3).size1());
-        RCLCPP_INFO(this->get_logger(), "Sanity Check: X(Slice(0, 2), 3) size2: %1lld", X(Slice(0, 2), 3).size2());
-        RCLCPP_INFO(this->get_logger(), "Sanity Check: U(Slice(), 3) size1: %1lld", U(Slice(), 3).size1());
-        RCLCPP_INFO(this->get_logger(), "Sanity Check: U(Slice(), 3) size2: %1lld", U(Slice(), 3).size2());
-        RCLCPP_INFO(this->get_logger(), "Sanity Check: Objective: %s", objective.get_str().c_str());
         RCLCPP_INFO(this->get_logger(), "Set Running State and Control Cost");
 
         // initial state constraint
         MX initial_state_constraint = reshape(X(Slice(), 0) - initial_state, -1, 1);
-        RCLCPP_INFO(this->get_logger(), "Initial state constraint size1: %1lld", initial_state_constraint.size1());
-        RCLCPP_INFO(this->get_logger(), "Initial state constraint size2: %1lld", initial_state_constraint.size2());
         RCLCPP_INFO(this->get_logger(), "Set Initial State Constraint");
 
         // final state constraint
         MX final_state_constraint = reshape(X(Slice(0, 2), N) - final_position, -1, 1);
-        RCLCPP_INFO(this->get_logger(), "Final state constraint size1: %1lld", final_state_constraint.size1());
-        RCLCPP_INFO(this->get_logger(), "Final state constraint size2: %1lld", final_state_constraint.size2());
         RCLCPP_INFO(this->get_logger(), "Set Final State Constraint");
 
         // initial control constraint
         MX initial_control_constraint = reshape(U(Slice(), 0), -1, 1);
-        RCLCPP_INFO(this->get_logger(), "Initial Control Constraint size1: %1lld", initial_control_constraint.size1());
-        RCLCPP_INFO(this->get_logger(), "Initial Control Constraint size2: %1lld", initial_control_constraint.size2());
         RCLCPP_INFO(this->get_logger(), "Set Initial Control Constraint");
 
         // final control constraint
         MX final_control_constraint = reshape(U(Slice(), N-1), -1, 1);
-        RCLCPP_INFO(this->get_logger(), "Final Control Constraint size1: %1lld", final_control_constraint.size1());
-        RCLCPP_INFO(this->get_logger(), "Final Control Constraint size2: %1lld", final_control_constraint.size2());
         RCLCPP_INFO(this->get_logger(), "Set Final Control Constraint");
 
         // add acceleration constraint
         MX v_dot_constraint = reshape((1/dt)*(U(0, Slice(1, N)) - U(0, Slice(0, N-1))), -1, 1);
         MX r_dot_constraint = reshape((1/dt)*(U(1, Slice(1, N)) - U(1, Slice(0, N-1))), -1, 1);
-        RCLCPP_INFO(this->get_logger(), "V_dot Constraint size1: %1lld", v_dot_constraint.size1());
-        RCLCPP_INFO(this->get_logger(), "V_dot Constraint size2: %1lld", v_dot_constraint.size2());
         RCLCPP_INFO(this->get_logger(), "Set V_dot Constraint");
-        RCLCPP_INFO(this->get_logger(), "R_dot Constraint size1: %1lld", r_dot_constraint.size1());
-        RCLCPP_INFO(this->get_logger(), "R_dot Constraint size2: %1lld", r_dot_constraint.size2());
         RCLCPP_INFO(this->get_logger(), "Set R_dot Constraint");
 
         // dynamics constraints
@@ -296,15 +265,7 @@ private:
             U(0, Slice()) * sin(X(2, Slice(0, N))),
             U(1, Slice()));
         MX x_next = x_now + delta_x;
-        RCLCPP_INFO(this->get_logger(), "x_now size1: %1lld", x_now.size1());
-        RCLCPP_INFO(this->get_logger(), "x_now size2: %1lld", x_now.size2());
-        RCLCPP_INFO(this->get_logger(), "delta_x size1: %1lld", delta_x.size1());
-        RCLCPP_INFO(this->get_logger(), "delta_x size2: %1lld", delta_x.size2());
-
         MX dynamics_constraint = reshape(x_next - X(Slice(), Slice(1, N+1)), -1, 1);
-        RCLCPP_INFO(this->get_logger(), "Dynamnics constraint size1: %1lld", dynamics_constraint.size1()); 
-        RCLCPP_INFO(this->get_logger(), "Dynamnics constraint size2: %1lld", dynamics_constraint.size2()); 
-        RCLCPP_INFO(this->get_logger(), "x_next: %s", x_next.get_str().c_str());
         RCLCPP_INFO(this->get_logger(), "Set Dynamics Constraint");
 
         // polyhedron constraints
@@ -312,9 +273,6 @@ private:
         int last_k = 0;
         for(size_t i=0; i < polyhedrons.size(); ++i){
             int next_k = static_cast<int>(path_proportions[i] * N);
-            RCLCPP_INFO(this->get_logger(), "path_proportions[i]: %1f", path_proportions[i]);
-            RCLCPP_INFO(this->get_logger(), "last_k: %1d", last_k);
-            RCLCPP_INFO(this->get_logger(), "next_k: %1d", next_k);
             vec_E<Hyperplane2D> hyperplanes = polyhedrons[i].hyperplanes();
             for(int k=last_k; k < next_k; ++k){
                 // ensure point is in the polyhedron
@@ -328,8 +286,6 @@ private:
             last_k = next_k;
         }
         MX polyhedron_constraint = vertcat(polyhedron_constraint_vector);
-        RCLCPP_INFO(this->get_logger(), "Polyhedron constraint size1: %1lld", polyhedron_constraint.size1()); 
-        RCLCPP_INFO(this->get_logger(), "Polyhedron constraint size2: %1lld", polyhedron_constraint.size2()); 
         RCLCPP_INFO(this->get_logger(), "Set Polyhedron Constraint");
         
         MX equality_constraints = vertcat(
@@ -367,18 +323,9 @@ private:
             (pi/4)*DM::ones(r_dot_constraint.size1(), 1),
             DM::zeros(polyhedron_constraint.size1(), 1));
 
-        RCLCPP_INFO(this->get_logger(), "Constriants (G) Lower Bound size1: %1lld", lbg.size1()); 
-        RCLCPP_INFO(this->get_logger(), "Constriants (G) Lower Bound size2: %1lld", lbg.size2()); 
-        RCLCPP_INFO(this->get_logger(), "Constriants (G) Upper Bound size1: %1lld", ubg.size1()); 
-        RCLCPP_INFO(this->get_logger(), "Constriants (G) Upper Bound size2: %1lld", ubg.size2()); 
-
         // Flatten decision variable bounds
         DM lbx = pack_variables_fn(lower_bounds)[0];
         DM ubx = pack_variables_fn(upper_bounds)[0];
-        RCLCPP_INFO(this->get_logger(), "Decision Variables Lower Bound size1: %1lld", lbx.size1()); 
-        RCLCPP_INFO(this->get_logger(), "Decision Variables Lower Bound size2: %1lld", lbx.size2()); 
-        RCLCPP_INFO(this->get_logger(), "Decision Variables Upper Bound size1: %1lld", ubx.size1()); 
-        RCLCPP_INFO(this->get_logger(), "Decision Variables Upper Bound size2: %1lld", ubx.size2()); 
         
         // Initial guess for optimization
         DM initial_guess = DM::zeros(variables_flat.size1(), 1);
@@ -388,8 +335,6 @@ private:
             initial_guess(3 * i + 1) = (1 - alpha) * initial_state(1) + alpha * final_position(1);
             // initial_guess(3 * i + 2) = (1 - alpha) * initial_state(2) + alpha * final_state(2);
         }
-        RCLCPP_INFO(this->get_logger(), "Initial Guess size1: %1lld", initial_guess.size1()); 
-        RCLCPP_INFO(this->get_logger(), "Initial Guess size2: %1lld", initial_guess.size2()); 
 
         // Solve NLP
         map<string, DM> solver_args = {

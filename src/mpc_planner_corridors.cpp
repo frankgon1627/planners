@@ -21,13 +21,13 @@ class MPCPlannerCorridors: public rclcpp::Node{
 public:
     MPCPlannerCorridors(): Node("mpc_planner_corridors"){
         odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/Odometry", 10, bind(&MPCPlannerCorridors::odometryCallback, this, placeholders::_1));
+            "/dlio/odom_node/odom", 10, bind(&MPCPlannerCorridors::odometryCallback, this, placeholders::_1));
         polygon_sub_ = this->create_subscription<custom_msgs_pkg::msg::PolygonArray>(
             "/convex_hulls", 10, bind(&MPCPlannerCorridors::polygonsCallback, this, placeholders::_1));
         // risk_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
         //     "/dummy_risk_map", 10, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
         risk_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-            "/risk_map", 10, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
+            "/planners/risk_map", 10, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
         path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
             "/planners/jump_point_path", 10, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
         // path_sub_ = this->create_subscription<nav_msgs::msg::Path>(

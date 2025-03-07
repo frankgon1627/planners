@@ -15,8 +15,8 @@ SQRT2 = 2**0.5
 class JPSPlanner(Node):
     def __init__(self) -> None:
         super().__init__('jps_planner')
-        self.create_subscription(Odometry, '/Odometry', self.odometry_callback, 10)
-        self.create_subscription(OccupancyGrid, '/llm_planning_node/filtered_costmap', self.occupancy_grid_callback, 10)
+        self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odometry_callback, 10)
+        self.create_subscription(OccupancyGrid, '/obstacle_detection/positive_obstacle_grid', self.occupancy_grid_callback, 10)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
         self.path_publisher = self.create_publisher(Path, '/planners/jump_point_path', 10)
         self.dialted_occupancy_grid_publisher = self.create_publisher(OccupancyGrid, '/planners/dialted_occupancy_grid', 10)

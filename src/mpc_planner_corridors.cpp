@@ -205,7 +205,7 @@ private:
 
         // input bounds
         lower_bounds[1] = repmat(DM(vector<double>{0.0, -pi/4}), 1, lower_bounds[1].size2());
-        upper_bounds[1] = repmat(DM(vector<double>{2.0, pi/4}), 1, upper_bounds[1].size2());
+        upper_bounds[1] = repmat(DM(vector<double>{1.5, pi/4}), 1, upper_bounds[1].size2());
         RCLCPP_INFO(this->get_logger(), "Set Input Bounds");
 
         // state bounds

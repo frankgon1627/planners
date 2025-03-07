@@ -10,13 +10,14 @@ def generate_launch_description():
         ),
         Node(
             package='planners',
-            executable='occupancy_grid_parser',
+            executable='occupancy_grid_parser.py',
             name='occupancy_grid_parser',
             shell=True
         ),
         Node(
             package='planners',
             executable='jump_point_planner',
-            name='jump_point_planner',
+            name='jump_point_planner.py',
+            shell=True
         )
     ])

@@ -16,8 +16,8 @@ def generate_launch_description():
         ),
         Node(
             package='planners',
-            executable='jump_point_planner',
-            name='jump_point_planner.py',
+            executable='jump_point_planner.py',
+            name='jump_point_planner',
             shell=True
         )
     ])

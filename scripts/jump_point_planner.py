@@ -65,6 +65,7 @@ class JPSPlanner(Node):
         self.dialated_grid.header = self.occupancy_grid.header
         self.dialated_grid.info = self.occupancy_grid.info
         self.dialated_grid.data = self.data.astype(np.int8).flatten().tolist()
+        self.dialated_grid.info.origin = self.occupancy_grid.info.origin
         self.dialted_occupancy_grid_publisher.publish(self.dialated_grid)
 
     def meters_to_grid(self, x_meters: float, y_meters: float) -> Tuple[int, int]:

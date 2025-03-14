@@ -315,22 +315,22 @@ class JPSPlanner(Node):
                 path = path[::-1]
                 return path
             
-        close_set.add(current)
-        successors = self.identifySuccessors(current[0], current[1], came_from, goal)
+            close_set.add(current)
+            successors = self.identifySuccessors(current[0], current[1], came_from, goal)
 
-        for successor in successors:
-            jumpPoint = successor
+            for successor in successors:
+                jumpPoint = successor
 
-            if jumpPoint in close_set:  # and tentative_g_score >= gscore.get(jumpPoint,0):
-                continue
+                if jumpPoint in close_set:  # and tentative_g_score >= gscore.get(jumpPoint,0):
+                    continue
 
-            tentative_g_score = gscore[current] + self.heuristic(current, jumpPoint)
+                tentative_g_score = gscore[current] + self.heuristic(current, jumpPoint)
 
-            if tentative_g_score < gscore.get(jumpPoint, 0) or jumpPoint not in [j[1] for j in pqueue]:
-                came_from[jumpPoint] = current
-                gscore[jumpPoint] = tentative_g_score
-                fscore[jumpPoint] = tentative_g_score + self.heuristic(jumpPoint, goal)
-                heapq.heappush(pqueue, (fscore[jumpPoint], jumpPoint))
+                if tentative_g_score < gscore.get(jumpPoint, 0) or jumpPoint not in [j[1] for j in pqueue]:
+                    came_from[jumpPoint] = current
+                    gscore[jumpPoint] = tentative_g_score
+                    fscore[jumpPoint] = tentative_g_score + self.heuristic(jumpPoint, goal)
+                    heapq.heappush(pqueue, (fscore[jumpPoint], jumpPoint))
         return []
 
     def publish_path(self, path) -> None:

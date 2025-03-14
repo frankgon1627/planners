@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import cv2
+import math
 import rclpy
 import heapq
 import numpy as np
@@ -106,85 +107,230 @@ class JPSPlanner(Node):
         if path:
             self.publish_path(path)
 
-    def is_valid(self, x: int, y: int) -> bool:
-        """Checks if a position is within bounds and not an obstacle"""
-        if 0 <= x < self.height and 0 <= y < self.width:
-            return self.data[x, y] == 0
+    def blocked(self, cX, cY, dX, dY):
+        if cX + dX < 0 or cX + dX >= self.data.shape[0]:
+            return True
+        if cY + dY < 0 or cY + dY >= self.data.shape[1]:
+            return True
+        if dX != 0 and dY != 0:
+            if self.data[cX + dX][cY] == 1 and self.data[cX][cY + dY] == 1:
+                return True
+            if self.data[cX + dX][cY + dY] == 1:
+                return True
+        else:
+            if dX != 0:
+                if self.data[cX + dX][cY] == 1:
+                    return True
+            else:
+                if self.data[cX][cY + dY] == 1:
+                    return True
         return False
 
-    def jump(self, x: int, y: int, dx: int, dy: int, goal: Tuple[int]) -> Tuple[int, int]:
-        """Jump function to identify jump points"""
 
-        if not self.is_valid(x, y):
-            return None
-        if (x, y) == goal:
-            return x, y
+    def dblock(self, cX, cY, dX, dY):
+        if self.data[cX - dX][cY] == 1 and self.data[cX][cY - dY] == 1:
+            return True
+        else:
+            return False
 
-        # Forced neighbor check (important for JPS)
-        if dx != 0 and dy != 0:  # Diagonal
-            if (self.is_valid(x - dx, y + dy) and not self.is_valid(x - dx, y)) or \
-                (self.is_valid(x + dx, y - dy) and not self.is_valid(x, y - dy)):
-                return x, y
-            if self.jump(x + dx, y, dx, dy, goal) or self.jump(x, y + dy, dx, dy, goal):
-                return x, y
-        else:  # Straight
-            if dx != 0:
-                if (self.is_valid(x + dx, y + 1) and not self.is_valid(x, y + 1)) or \
-                    (self.is_valid(x + dx, y - 1) and not self.is_valid(x, y - 1)):
-                    return x, y
+    def direction(self, cX, cY, pX, pY):
+        dX = int(math.copysign(1, cX - pX))
+        dY = int(math.copysign(1, cY - pY))
+        if cX - pX == 0:
+            dX = 0
+        if cY - pY == 0:
+            dY = 0
+        return (dX, dY)
+
+    def nodeNeighbours(self, cX, cY, parent):
+        neighbours = []
+        if type(parent) != tuple:
+            for i, j in [
+                (-1, 0),
+                (0, -1),
+                (1, 0),
+                (0, 1),
+                (-1, -1),
+                (-1, 1),
+                (1, -1),
+                (1, 1),
+            ]:
+                if not self.blocked(cX, cY, i, j):
+                    neighbours.append((cX + i, cY + j))
+
+            return neighbours
+        dX, dY = self.direction(cX, cY, parent[0], parent[1])
+
+        if dX != 0 and dY != 0:
+            if not self.blocked(cX, cY, 0, dY):
+                neighbours.append((cX, cY + dY))
+            if not self.blocked(cX, cY, dX, 0):
+                neighbours.append((cX + dX, cY))
+            if (
+                not self.blocked(cX, cY, 0, dY)
+                or not self.blocked(cX, cY, dX, 0)
+            ) and not self.blocked(cX, cY, dX, dY):
+                neighbours.append((cX + dX, cY + dY))
+            if self.blocked(cX, cY, -dX, 0) and not self.blocked(
+                cX, cY, 0, dY
+            ):
+                neighbours.append((cX - dX, cY + dY))
+            if self.blocked(cX, cY, 0, -dY) and not self.blocked(
+                cX, cY, dX, 0
+            ):
+                neighbours.append((cX + dX, cY - dY))
+
+        else:
+            if dX == 0:
+                if not self.blocked(cX, cY, dX, 0):
+                    if not self.blocked(cX, cY, 0, dY):
+                        neighbours.append((cX, cY + dY))
+                    if self.blocked(cX, cY, 1, 0):
+                        neighbours.append((cX + 1, cY + dY))
+                    if self.blocked(cX, cY, -1, 0):
+                        neighbours.append((cX - 1, cY + dY))
+
             else:
-                if (self.is_valid(x + 1, y + dy) and not self.is_valid(x + 1, y)) or \
-                    (self.is_valid(x - 1, y + dy) and not self.is_valid(x - 1, y)):
-                    return x, y
+                if not self.blocked(cX, cY, dX, 0):
+                    if not self.blocked(cX, cY, dX, 0):
+                        neighbours.append((cX + dX, cY))
+                    if self.blocked(cX, cY, 0, 1):
+                        neighbours.append((cX + dX, cY + 1))
+                    if self.blocked(cX, cY, 0, -1):
+                        neighbours.append((cX + dX, cY - 1))
+        return neighbours
 
-        return self.jump(x + dx, y + dy, dx, dy, goal)
+    def jump(self, cX, cY, dX, dY, goal):
 
-    def identify_successors(self, current_node: Tuple[int, int], goal: Tuple[int, int]):
-        """Find successors using jump points"""
-        x, y, g = current_node
+        nX = cX + dX
+        nY = cY + dY
+        if self.blocked(nX, nY, 0, 0):
+            return None
+
+        if (nX, nY) == goal:
+            return (nX, nY)
+
+        oX = nX
+        oY = nY
+
+        if dX != 0 and dY != 0:
+            while True:
+                if (
+                    not self.blocked(oX, oY, -dX, dY)
+                    and self.blocked(oX, oY, -dX, 0)
+                    or not self.blocked(oX, oY, dX, -dY)
+                    and self.blocked(oX, oY, 0, -dY)
+                ):
+                    return (oX, oY)
+
+                if (
+                    self.jump(oX, oY, dX, 0, goal) != None
+                    or self.jump(oX, oY, 0, dY, goal) != None
+                ):
+                    return (oX, oY)
+
+                oX += dX
+                oY += dY
+
+                if self.blocked(oX, oY, 0, 0):
+                    return None
+
+                if self.dblock(oX, oY, dX, dY):
+                    return None
+
+                if (oX, oY) == goal:
+                    return (oX, oY)
+        else:
+            if dX != 0:
+                while True:
+                    if (
+                        not self.blocked(oX, nY, dX, 1)
+                        and self.blocked(oX, nY, 0, 1)
+                        or not self.blocked(oX, nY, dX, -1)
+                        and self.blocked(oX, nY, 0, -1)
+                    ):
+                        return (oX, nY)
+
+                    oX += dX
+
+                    if self.blocked(oX, nY, 0, 0):
+                        return None
+
+                    if (oX, nY) == goal:
+                        return (oX, nY)
+
+            else:
+                while True:
+                    if (
+                        not self.blocked(nX, oY, 1, dY)
+                        and self.blocked(nX, oY, 1, 0)
+                        or not self.blocked(nX, oY, -1, dY)
+                        and self.blocked(nX, oY, -1, 0)
+                    ):
+                        return (nX, oY)
+
+                    oY += dY
+
+                    if self.blocked(nX, oY, 0, 0):
+                        return None
+
+                    if (nX, oY) == goal:
+                        return (nX, oY)
+
+        return jump(nX, nY, dX, dY, goal)
+
+    def identifySuccessors(self, cX, cY, came_from, goal):
         successors = []
+        neighbours = self.nodeNeighbours(cX, cY, came_from.get((cX, cY), 0))
 
-        for dx, dy in self.directions:
-            jump_point = self.jump(x + dx, y + dy, dx, dy, goal)
-            if jump_point:
-                jx, jy = jump_point
-                cost = g + (SQRT2 if dx != 0 and dy != 0 else 1)
-                successors.append((jx, jy, cost))
+        for cell in neighbours:
+            dX = cell[0] - cX
+            dY = cell[1] - cY
+
+            jumpPoint = self.jump(cX, cY, dX, dY, goal)
+
+            if jumpPoint != None:
+                successors.append(jumpPoint)
 
         return successors
 
     def run_jps(self, start: Tuple[int, int], goal: Tuple[int, int]) -> List[Tuple[int, int]]:
         """Executes Jump Point Search Algorithm"""
-        open_list: List[Tuple[int, int, int, int]] = []
-        heapq.heappush(open_list, (0, start[0], start[1], 0)) 
-        came_from: Dict[Tuple[int, int], Tuple[int, int]] = {}
-        g_score: Dict[Tuple, int] = {start: 0}
+        came_from = {}
+        close_set = set()
+        gscore = {start: 0}
+        fscore = {start: self.heuristic(start, goal)}
+        pqueue = []
+        heapq.heappush(pqueue, (fscore[start], start))
 
-        while open_list:
-            _, x, y, g = heapq.heappop(open_list)
-            if (x, y) == goal:
-                return self.reconstruct_path(came_from, goal)
+        while pqueue:
+            current = heapq.heappop(pqueue)[1]
+            if current == goal:
+                path = []
+                while current in came_from:
+                    path.append(current)
+                    current = came_from[current]
+                path.append(start)
+                path = path[::-1]
+                return path
+            
+        close_set.add(current)
+        successors = self.identifySuccessors(current[0], current[1], came_from, goal)
 
-            for successor in self.identify_successors((x, y, g), goal):
-                sx, sy, new_g = successor
-                if (sx, sy) not in g_score or new_g < g_score[(sx, sy)]:
-                    g_score[(sx, sy)] = new_g
-                    f = new_g + self.heuristic((sx, sy), goal)
-                    heapq.heappush(open_list, (f, sx, sy, new_g))
-                    came_from[(sx, sy)] = (x, y)
+        for successor in successors:
+            jumpPoint = successor
 
-        self.get_logger().warn("No path found.")
+            if jumpPoint in close_set:  # and tentative_g_score >= gscore.get(jumpPoint,0):
+                continue
+
+            tentative_g_score = gscore[current] + self.heuristic(current, jumpPoint)
+
+            if tentative_g_score < gscore.get(jumpPoint, 0) or jumpPoint not in [j[1] for j in pqueue]:
+                came_from[jumpPoint] = current
+                gscore[jumpPoint] = tentative_g_score
+                fscore[jumpPoint] = tentative_g_score + self.heuristic(jumpPoint, goal)
+                heapq.heappush(pqueue, (fscore[jumpPoint], jumpPoint))
         return []
-
-    def reconstruct_path(self, came_from: Dict[Tuple[int, int], Tuple[int, int]], goal: Tuple[int, int]) -> List[Tuple[int, int]]:
-        """Reconstructs the path from the goal to the start"""
-        path = []
-        current = goal
-        while current in came_from:
-            path.append(current)
-            current = came_from[current]
-        path.append(current)
-        return path[::-1]
 
     def publish_path(self, path) -> None:
         """Publishes the computed path as a ROS 2 Path message"""

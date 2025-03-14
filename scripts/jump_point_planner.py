@@ -8,6 +8,9 @@ import numpy as np
 from rclpy.node import Node
 from nav_msgs.msg import OccupancyGrid, Path, Odometry
 from geometry_msgs.msg import PoseStamped
+from tf2_ros import Buffer, TransformListener
+import tf2_ros
+import tf2_geometry_msgs
 
 from typing import Dict, Set, Tuple, List
 
@@ -22,6 +25,9 @@ class JPSPlanner(Node):
         self.timer = self.create_timer(0.1, self.generate_trajectory)
         self.path_publisher = self.create_publisher(Path, '/planners/jump_point_path', 10)
         self.dialted_occupancy_grid_publisher = self.create_publisher(OccupancyGrid, '/planners/dialted_occupancy_grid', 10)
+
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.odometry: Odometry | None = None
         self.occupancy_grid: OccupancyGrid | None = None
@@ -75,6 +81,17 @@ class JPSPlanner(Node):
     def goal_callback(self, msg: PoseStamped) -> None:
         """Receives goal position"""
         self.goal = msg
+
+        # convert goal to map frame if not in map frame
+        if self.goal.header.frame_id != "map":
+            in_map_frame = False
+            while not in_map_frame:
+                try:
+                    transform = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+                    self.goal = tf2_geometry_msgs.do_transform_pose_stamped(self.goal, transform)
+                    in_map_frame = True
+                except:
+                    self.get_logger().warn("Failed to get Transform from base_link to map")
 
     def generate_trajectory(self) -> None:
         """Receives goal position and triggers path planning"""

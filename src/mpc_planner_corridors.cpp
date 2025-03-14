@@ -48,8 +48,25 @@ private:
 
     void polygonsCallback(const custom_msgs_pkg::msg::PolygonArray::SharedPtr msg) {
         for (const geometry_msgs::msg::Polygon& polygon: msg->polygons){
-            for (const geometry_msgs::msg::Point32& point: polygon.points){
-                obstacles_.push_back(Vec2f(point.x, point.y));
+            // for (const geometry_msgs::msg::Point32& point: polygon.points){
+            //     obstacles_.push_back(Vec2f(point.x, point.y));
+            // }
+            for (size_t i=0; i < polygon.points.size(); ++i){
+                geometry_msgs::msg::Point32 point1 = polygon.points[i];
+                geometry_msgs::msg::Point32 point2 = polygon.points[(i + 1) % polygon.points.size()];
+
+                float dx = point2.x - point1.x;
+                float dy = point2.y - point1.y;
+                float length = sqrt(dx * dx + dy * dy);
+                int num_steps = ceil(length / 0.1);
+                
+                // interpolate between points to densify the obstacle cloud
+                for (int j = 0; j < num_steps; ++j) {
+                    float t = static_cast<float>(j) / num_steps;
+                    float x = point1.x + t * dx;
+                    float y = point1.y + t * dy;
+                    obstacles_.push_back(Vec2f(x, y));
+                }
             }
         }
     }

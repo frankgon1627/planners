@@ -19,6 +19,7 @@ class JPSPlanner(Node):
         self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odometry_callback, 10)
         self.create_subscription(OccupancyGrid, '/obstacle_detection/positive_obstacle_grid', self.occupancy_grid_callback, 10)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
+        self.timer = self.create_timer(0.1, self.generate_trajectory)
         self.path_publisher = self.create_publisher(Path, '/planners/jump_point_path', 10)
         self.dialted_occupancy_grid_publisher = self.create_publisher(OccupancyGrid, '/planners/dialted_occupancy_grid', 10)
 
@@ -40,7 +41,6 @@ class JPSPlanner(Node):
         """Processes Odometry messages from ROS 2"""
         self.odometry = msg
 
-        
     def occupancy_grid_callback(self, msg: OccupancyGrid) -> None:
         """Processes OccupancyGrid messages from ROS 2"""
         self.occupancy_grid: OccupancyGrid = msg
@@ -71,8 +71,12 @@ class JPSPlanner(Node):
         grid_x: int = int((x_meters - self.origin[0]) / self.resolution)
         grid_y: int = int((y_meters - self.origin[1]) / self.resolution)
         return grid_x, grid_y
-
+    
     def goal_callback(self, msg: PoseStamped) -> None:
+        """Receives goal position"""
+        self.goal = msg
+
+    def generate_trajectory(self) -> None:
         """Receives goal position and triggers path planning"""
         if self.occupancy_grid is None:
             self.get_logger().warn("No Occupancy Grid Received yet.")
@@ -82,12 +86,16 @@ class JPSPlanner(Node):
             self.get_logger().warn("No Odometry Received yet.")
             return
         
+        if self.goal is None:
+            self.get_logger().warn("No Goal Posse Received yet.")
+            return
+        
         # convert start to grid coordinates
         self.get_logger().info(f"Odometry: {self.odometry.pose.pose.position}")
         sx, sy = self.meters_to_grid(self.odometry.pose.pose.position.x, self.odometry.pose.pose.position.y)
 
         # Convert goal to grid coordinates
-        gx, gy = self.meters_to_grid(msg.pose.position.x, msg.pose.position.y)
+        gx, gy = self.meters_to_grid(self.goal.pose.position.x, self.goal.pose.position.y)
 
         start: Tuple[int, int] = (sy, sx)
         goal: Tuple[int, int] = (gy, gx)

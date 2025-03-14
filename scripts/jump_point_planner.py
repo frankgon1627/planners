@@ -102,6 +102,7 @@ class JPSPlanner(Node):
 
         # Run JPS Algorithm
         path = self.run_jps(start, goal)
+        self.get_logger().info(f"Path: {path}")
 
         # Publish path if found
         if path:
@@ -113,22 +114,22 @@ class JPSPlanner(Node):
         if cY + dY < 0 or cY + dY >= self.data.shape[1]:
             return True
         if dX != 0 and dY != 0:
-            if self.data[cX + dX][cY] == 100 and self.data[cX][cY + dY] == 100:
+            if self.data[cX + dX, cY] == 100 and self.data[cX, cY + dY] == 100:
                 return True
-            if self.data[cX + dX][cY + dY] == 100:
+            if self.data[cX + dX, cY + dY] == 100:
                 return True
         else:
             if dX != 0:
-                if self.data[cX + dX][cY] == 100:
+                if self.data[cX + dX, cY] == 100:
                     return True
             else:
-                if self.data[cX][cY + dY] == 100:
+                if self.data[cX, cY + dY] == 100:
                     return True
         return False
 
 
     def dblock(self, cX, cY, dX, dY):
-        if self.data[cX - dX][cY] == 100 and self.data[cX][cY - dY] == 100:
+        if self.data[cX - dX, cY] == 100 and self.data[cX, cY - dY] == 100:
             return True
         else:
             return False

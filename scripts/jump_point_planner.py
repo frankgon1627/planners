@@ -34,11 +34,6 @@ class JPSPlanner(Node):
 
         self.dialation: float = 0.03
 
-        self.directions: List[Tuple[int, int]] = [
-            (1, 0), (-1, 0), (0, 1), (0, -1), 
-            (1, 1), (1, -1), (-1, 1), (-1, -1)
-        ]
-
         self.get_logger().info("JPS Planner Node Initialized")
 
     def odometry_callback(self, msg: Odometry) -> None:
@@ -108,7 +103,7 @@ class JPSPlanner(Node):
         if path:
             self.publish_path(path)
 
-    def blocked(self, cX, cY, dX, dY):
+    def blocked(self, cX: int, cY: int, dX: int, dY: int) -> bool:
         if cX + dX < 0 or cX + dX >= self.data.shape[0]:
             return True
         if cY + dY < 0 or cY + dY >= self.data.shape[1]:
@@ -128,23 +123,23 @@ class JPSPlanner(Node):
         return False
 
 
-    def dblock(self, cX, cY, dX, dY):
+    def dblock(self, cX: int, cY: int, dX: int, dY: int) -> bool:
         if self.data[cX - dX, cY] == 100 and self.data[cX, cY - dY] == 100:
             return True
         else:
             return False
 
-    def direction(self, cX, cY, pX, pY):
-        dX = int(math.copysign(1, cX - pX))
-        dY = int(math.copysign(1, cY - pY))
+    def direction(self, cX: int, cY: int, pX: int, pY: int) -> Tuple[int, int]:
+        dX: int = int(math.copysign(1, cX - pX))
+        dY: int = int(math.copysign(1, cY - pY))
         if cX - pX == 0:
             dX = 0
         if cY - pY == 0:
             dY = 0
         return (dX, dY)
 
-    def nodeNeighbours(self, cX, cY, parent):
-        neighbours = []
+    def nodeNeighbours(self, cX: int, cY: int, parent: Tuple[int, int]) -> List[Tuple[int, int]]:
+        neighbours: List[Tuple[int, int]] = []
         if type(parent) != tuple:
             for i, j in [
                 (-1, 0),
@@ -201,18 +196,18 @@ class JPSPlanner(Node):
                         neighbours.append((cX + dX, cY - 1))
         return neighbours
 
-    def jump(self, cX, cY, dX, dY, goal):
+    def jump(self, cX: int, cY: int, dX: int, dY: int, goal: Tuple[int, int]) -> Tuple[int, int]:
 
-        nX = cX + dX
-        nY = cY + dY
+        nX: int = cX + dX
+        nY: int = cY + dY
         if self.blocked(nX, nY, 0, 0):
             return None
 
         if (nX, nY) == goal:
             return (nX, nY)
 
-        oX = nX
-        oY = nY
+        oX: int = nX
+        oY: int = nY
 
         if dX != 0 and dY != 0:
             while True:
@@ -280,7 +275,8 @@ class JPSPlanner(Node):
 
         return jump(nX, nY, dX, dY, goal)
 
-    def identifySuccessors(self, cX, cY, came_from, goal):
+    def identifySuccessors(self, cX: int, cY: int, came_from: Dict[Tuple[int, int], Tuple[int, int]], 
+                            goal: Tuple[int, int]) -> List[Tuple[int, int]]:
         successors = []
         neighbours = self.nodeNeighbours(cX, cY, came_from.get((cX, cY), 0))
 
@@ -288,7 +284,7 @@ class JPSPlanner(Node):
             dX = cell[0] - cX
             dY = cell[1] - cY
 
-            jumpPoint = self.jump(cX, cY, dX, dY, goal)
+            jumpPoint: Tuple[int, int] = self.jump(cX, cY, dX, dY, goal)
 
             if jumpPoint != None:
                 successors.append(jumpPoint)
@@ -297,15 +293,15 @@ class JPSPlanner(Node):
 
     def run_jps(self, start: Tuple[int, int], goal: Tuple[int, int]) -> List[Tuple[int, int]]:
         """Executes Jump Point Search Algorithm"""
-        came_from = {}
-        close_set = set()
-        gscore = {start: 0}
-        fscore = {start: self.heuristic(start, goal)}
-        pqueue = []
+        came_from: Dict[Tuple[int, int], Tuple[int, int]] = {}
+        close_set: Set[Tuple[int, int]] = set()
+        gscore: Dict[Tuple[int, int], int] = {start: 0}
+        fscore: Dict[Tuple[int, int], float] = {start: self.heuristic(start, goal)}
+        pqueue: List[float, Tuple[int, int]] = []
         heapq.heappush(pqueue, (fscore[start], start))
 
         while pqueue:
-            current = heapq.heappop(pqueue)[1]
+            current: Tuple[int, int] = heapq.heappop(pqueue)[1]
             if current == goal:
                 path = []
                 while current in came_from:
@@ -333,9 +329,9 @@ class JPSPlanner(Node):
                     heapq.heappush(pqueue, (fscore[jumpPoint], jumpPoint))
         return []
 
-    def publish_path(self, path) -> None:
+    def publish_path(self, path: List[Tuple[int, int]]) -> None:
         """Publishes the computed path as a ROS 2 Path message"""
-        path_msg = Path()
+        path_msg: Path = Path()
         path_msg.header.frame_id = "map"
         path_msg.header.stamp = self.get_clock().now().to_msg()
 

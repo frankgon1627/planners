@@ -87,8 +87,9 @@ class JPSPlanner(Node):
             in_map_frame = False
             while not in_map_frame:
                 try:
-                    transform = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+                    transform = self.tf_buffer.lookup_transform('map', self.goal.header.frame_id, rclpy.time.Time())
                     self.goal = tf2_geometry_msgs.do_transform_pose_stamped(self.goal, transform)
+                    self.get_logger().info(f"Converted Goal to: {self.goal.pose.position}")
                     in_map_frame = True
                 except:
                     self.get_logger().warn("Failed to get Transform from base_link to map")
@@ -104,7 +105,7 @@ class JPSPlanner(Node):
             return
         
         if self.goal is None:
-            self.get_logger().warn("No Goal Posse Received yet.")
+            self.get_logger().warn("No Goal Pose Received yet.")
             return
         
         # convert start to grid coordinates
@@ -116,9 +117,6 @@ class JPSPlanner(Node):
 
         start: Tuple[int, int] = (sy, sx)
         goal: Tuple[int, int] = (gy, gx)
-
-        self.get_logger().info(f"Set start at ({sx}, {sy}) in grid coordinates.")
-        self.get_logger().info(f"Received goal at ({gx}, {gy}) in grid coordinates.")
 
         # Run JPS Algorithm
         path = self.run_jps(start, goal)

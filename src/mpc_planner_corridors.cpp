@@ -24,14 +24,10 @@ public:
             "/dlio/odom_node/odom", 10, bind(&MPCPlannerCorridors::odometryCallback, this, placeholders::_1));
         polygon_sub_ = this->create_subscription<custom_msgs_pkg::msg::PolygonArray>(
             "/convex_hulls", 10, bind(&MPCPlannerCorridors::polygonsCallback, this, placeholders::_1));
-        // risk_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-        //     "/dummy_risk_map", 10, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
         risk_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             "/planners/risk_map", 10, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
         path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
             "/planners/jump_point_path", 10, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
-        // path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-        //     "/planners/a_star_path", 10, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
         travel_corridors_pub_ = this->create_publisher<decomp_ros_msgs::msg::PolyhedronArray>(
             "/polyhedron_array", 10);
         mpc_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(
@@ -48,9 +44,6 @@ private:
 
     void polygonsCallback(const custom_msgs_pkg::msg::PolygonArray::SharedPtr msg) {
         for (const geometry_msgs::msg::Polygon& polygon: msg->polygons){
-            // for (const geometry_msgs::msg::Point32& point: polygon.points){
-            //     obstacles_.push_back(Vec2f(point.x, point.y));
-            // }
             for (size_t i=0; i < polygon.points.size(); ++i){
                 geometry_msgs::msg::Point32 point1 = polygon.points[i];
                 geometry_msgs::msg::Point32 point2 = polygon.points[(i + 1) % polygon.points.size()];

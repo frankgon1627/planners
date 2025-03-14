@@ -65,7 +65,7 @@ class OccupancyGridParser(Node):
         """
         Clusters points based on proximity using DBSCAN.
         """
-        clustering: DBSCAN = DBSCAN(eps=5*resolution, min_samples=2).fit(points)
+        clustering: DBSCAN = DBSCAN(eps=3*resolution, min_samples=2).fit(points)
         labels: List[int] = clustering.labels_
 
         clusters: List[np.ndarray[float]] = []

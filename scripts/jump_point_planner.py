@@ -39,7 +39,7 @@ class JPSPlanner(Node):
         self.origin: Tuple[float, float] | None = None
         self.goal: PoseStamped | None = None
 
-        self.dialation: float = 0.03
+        self.dialation: float = 0.5
 
         self.get_logger().info("JPS Planner Node Initialized")
 

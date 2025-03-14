@@ -114,6 +114,7 @@ class JPSPlanner(Node):
 
     def jump(self, x: int, y: int, dx: int, dy: int, goal: Tuple[int]) -> Tuple[int, int]:
         """Jump function to identify jump points"""
+
         if not self.is_valid(x, y):
             return None
         if (x, y) == goal:
@@ -121,8 +122,10 @@ class JPSPlanner(Node):
 
         # Forced neighbor check (important for JPS)
         if dx != 0 and dy != 0:  # Diagonal
-            if (self.is_valid(x - dx, y) and not self.is_valid(x - dx, y + dy)) or \
-                (self.is_valid(x, y - dy) and not self.is_valid(x + dx, y - dy)):
+            if (self.is_valid(x - dx, y + dy) and not self.is_valid(x - dx, y)) or \
+                (self.is_valid(x + dx, y - dy) and not self.is_valid(x, y - dy)):
+                return x, y
+            if self.jump(x + dx, y, dx, dy, goal) or self.jump(x, y + dy, dx, dy, goal):
                 return x, y
         else:  # Straight
             if dx != 0:
@@ -133,11 +136,6 @@ class JPSPlanner(Node):
                 if (self.is_valid(x + 1, y + dy) and not self.is_valid(x + 1, y)) or \
                     (self.is_valid(x - 1, y + dy) and not self.is_valid(x - 1, y)):
                     return x, y
-                
-        # Diagonal recursive jump check
-        if dx != 0 and dy != 0:
-            if self.jump(x + dx, y, dx, 0, goal) or self.jump(x, y + dy, 0, dy, goal):
-                return x, y
 
         return self.jump(x + dx, y + dy, dx, dy, goal)
 
@@ -157,10 +155,10 @@ class JPSPlanner(Node):
 
     def run_jps(self, start: Tuple[int, int], goal: Tuple[int, int]) -> List[Tuple[int, int]]:
         """Executes Jump Point Search Algorithm"""
-        open_list = []
-        heapq.heappush(open_list, (0, start[0], start[1], 0))  # (f, x, y, g)
-        came_from: Set[Tuple[int, int]] = {}
-        g_score = {start: 0}
+        open_list: List[Tuple[int, int, int, int]] = []
+        heapq.heappush(open_list, (0, start[0], start[1], 0)) 
+        came_from: Dict[Tuple[int, int], Tuple[int, int]] = {}
+        g_score: Dict[Tuple, int] = {start: 0}
 
         while open_list:
             _, x, y, g = heapq.heappop(open_list)

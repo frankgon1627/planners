@@ -83,7 +83,7 @@ class JPSPlanner(Node):
         self.goal = msg
 
         # convert goal to map frame if not in map frame
-        if self.goal.header.frame_id != "map":
+        if self.goal.header.frame_id != "odom":
             in_map_frame = False
             while not in_map_frame:
                 try:
@@ -355,12 +355,12 @@ class JPSPlanner(Node):
     def publish_path(self, path: List[Tuple[int, int]]) -> None:
         """Publishes the computed path as a ROS 2 Path message"""
         path_msg: Path = Path()
-        path_msg.header.frame_id = "map"
+        path_msg.header.frame_id = "odom"
         path_msg.header.stamp = self.get_clock().now().to_msg()
 
         for (gy, gx) in path:
             pose = PoseStamped()
-            pose.header.frame_id = "map"
+            pose.header.frame_id = "odom"
             pose.pose.position.x = gx * self.resolution + self.origin[0]
             pose.pose.position.y = gy * self.resolution + self.origin[1]
             path_msg.poses.append(pose)

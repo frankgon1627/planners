@@ -175,7 +175,7 @@ private:
         
         vec_E<Polyhedron2D> polyhedrons = decomp_util.get_polyhedrons();
         decomp_ros_msgs::msg::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polyhedrons);
-        poly_msg.header.frame_id = "map";
+        poly_msg.header.frame_id = "odom";
         travel_corridors_pub_->publish(poly_msg);
         RCLCPP_INFO(this->get_logger(), "Generated Travel Corridors");
         RCLCPP_INFO(this->get_logger(), "Generated %1ld Polygons", polyhedrons.size());
@@ -391,11 +391,11 @@ private:
     void publishTrajectory(vector<vector<double>>& trajectory){
         nav_msgs::msg::Path path_msg;
         path_msg.header.stamp = this->now();
-        path_msg.header.frame_id = "map";
+        path_msg.header.frame_id = "odom";
 
         visualization_msgs::msg::Marker path_points;
         path_points.header.stamp = this->now();
-        path_points.header.frame_id = "map";
+        path_points.header.frame_id = "odom";
         path_points.type = visualization_msgs::msg::Marker::SPHERE_LIST;
         path_points.action = visualization_msgs::msg::Marker::ADD;
         path_points.scale.x = 0.1;
@@ -410,7 +410,7 @@ private:
             // add a pose to the path message
             geometry_msgs::msg::PoseStamped pose;
             pose.header.stamp = this->now();
-            pose.header.frame_id = "map";
+            pose.header.frame_id = "odom";
 
             pose.pose.position.x = state[0];
             pose.pose.position.y = state[1];

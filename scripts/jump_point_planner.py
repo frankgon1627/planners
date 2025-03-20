@@ -87,7 +87,7 @@ class JPSPlanner(Node):
             in_map_frame = False
             while not in_map_frame:
                 try:
-                    transform = self.tf_buffer.lookup_transform('map', self.goal.header.frame_id, rclpy.time.Time())
+                    transform = self.tf_buffer.lookup_transform('odom', self.goal.header.frame_id, rclpy.time.Time())
                     self.goal = tf2_geometry_msgs.do_transform_pose_stamped(self.goal, transform)
                     self.get_logger().info(f"Converted Goal to: {self.goal.pose.position}")
                     in_map_frame = True

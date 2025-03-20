@@ -202,7 +202,6 @@ private:
 
         DMVector upper_bounds = unpack_variables_fn(DM::inf(variables_flat.rows(), 1));
         DMVector lower_bounds = unpack_variables_fn(-DM::inf(variables_flat.rows(), 1));
-        RCLCPP_INFO(this->get_logger(), "Made Variables and Bound Arrays");
 
         // set initial and final state vectors
         DM initial_state = reshape(DM(vector<double>{
@@ -216,7 +215,6 @@ private:
         // input bounds
         lower_bounds[1] = repmat(DM(vector<double>{0.0, -pi/4}), 1, lower_bounds[1].size2());
         upper_bounds[1] = repmat(DM(vector<double>{1.5, pi/4}), 1, upper_bounds[1].size2());
-        RCLCPP_INFO(this->get_logger(), "Set Input Bounds");
 
         // state bounds
         lower_bounds[0](0, Slice()) = risk_map_->info.origin.position.x * DM::ones(1, lower_bounds[0].size2());
@@ -244,29 +242,22 @@ private:
             objective = objective + mtimes(mtimes(control_penalty.T(), R), control_penalty);
             objective = objective + risk_value;
         }   
-        RCLCPP_INFO(this->get_logger(), "Set Running State and Control Cost");
 
         // initial state constraint
         MX initial_state_constraint = reshape(X(Slice(), 0) - initial_state, -1, 1);
-        RCLCPP_INFO(this->get_logger(), "Set Initial State Constraint");
 
         // final state constraint
         MX final_state_constraint = reshape(X(Slice(0, 2), N) - final_position, -1, 1);
-        RCLCPP_INFO(this->get_logger(), "Set Final State Constraint");
 
         // initial control constraint
         MX initial_control_constraint = reshape(U(Slice(), 0), -1, 1);
-        RCLCPP_INFO(this->get_logger(), "Set Initial Control Constraint");
 
         // final control constraint
         MX final_control_constraint = reshape(U(Slice(), N-1), -1, 1);
-        RCLCPP_INFO(this->get_logger(), "Set Final Control Constraint");
 
         // add acceleration constraint
         MX v_dot_constraint = reshape((1/dt)*(U(0, Slice(1, N)) - U(0, Slice(0, N-1))), -1, 1);
         MX r_dot_constraint = reshape((1/dt)*(U(1, Slice(1, N)) - U(1, Slice(0, N-1))), -1, 1);
-        RCLCPP_INFO(this->get_logger(), "Set V_dot Constraint");
-        RCLCPP_INFO(this->get_logger(), "Set R_dot Constraint");
 
         // dynamics constraints
         MX x_now = X(Slice(), Slice(0, N));
@@ -276,7 +267,6 @@ private:
             U(1, Slice()));
         MX x_next = x_now + delta_x;
         MX dynamics_constraint = reshape(x_next - X(Slice(), Slice(1, N+1)), -1, 1);
-        RCLCPP_INFO(this->get_logger(), "Set Dynamics Constraint");
 
         // polyhedron constraints
         vector<MX> polyhedron_constraint_vector;
@@ -296,7 +286,6 @@ private:
             last_k = next_k;
         }
         MX polyhedron_constraint = vertcat(polyhedron_constraint_vector);
-        RCLCPP_INFO(this->get_logger(), "Set Polyhedron Constraint");
         
         MX equality_constraints = vertcat(
             initial_state_constraint, 
@@ -373,7 +362,6 @@ private:
         }
         RCLCPP_INFO(this->get_logger(), "Generated trajectory with %ld points", trajectory.size());
         publishTrajectory(trajectory);
-        RCLCPP_INFO(this->get_logger(), "Published Trajectory");
 
         // log the v, omega, x, y, and theta values for plotting
 

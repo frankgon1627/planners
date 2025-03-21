@@ -146,17 +146,16 @@ private:
             return;
         }
 
-        vec_Vec2f path_2d;
         for (const geometry_msgs::msg::PoseStamped& pose : msg->poses) {
-            path_2d.emplace_back(pose.pose.position.x, pose.pose.position.y);
+            path_2d_.emplace_back(pose.pose.position.x, pose.pose.position.y);
         }
 
         // generate cumulative proportion of path length metric
         vector<double> cum_distances;
         double total_distance = 0.0;
-        for (unsigned int i=0; i<path_2d.size() - 1; ++i){
-            Vec2f& point1 = path_2d[i];
-            Vec2f& point2 = path_2d[i+1];
+        for (unsigned int i=0; i<path_2d_.size() - 1; ++i){
+            Vec2f& point1 = path_2d_[i];
+            Vec2f& point2 = path_2d_[i+1];
             double dist_squared = pow(point1[0] - point2[0], 2) + pow(point1[1] - point2[1], 2);
             double dist = pow(dist_squared, 0.5);
             total_distance += dist;
@@ -171,7 +170,7 @@ private:
         IterativeDecomp2D decomp_util;
         decomp_util.set_obs(obstacles_);
         decomp_util.set_local_bbox(Vec2f(20, 20));
-        decomp_util.dilate(path_2d);
+        decomp_util.dilate(path_2d_);
         
         vec_E<Polyhedron2D> polyhedrons = decomp_util.get_polyhedrons();
         decomp_ros_msgs::msg::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polyhedrons);
@@ -179,7 +178,7 @@ private:
         travel_corridors_pub_->publish(poly_msg);
         RCLCPP_INFO(this->get_logger(), "Generated Travel Corridors");
         RCLCPP_INFO(this->get_logger(), "Generated %1ld Polygons", polyhedrons.size());
-        RCLCPP_INFO(this->get_logger(), "Number of Segments: %1ld", path_2d.size() - 1);
+        RCLCPP_INFO(this->get_logger(), "Number of Segments: %1ld", path_2d_.size() - 1);
         
         vector<double> goal_position = {msg->poses.back().pose.position.x, msg->poses.back().pose.position.y};
         generateTrajectory(polyhedrons, goal_position, path_proportions);
@@ -328,11 +327,27 @@ private:
         
         // Initial guess for optimization
         DM initial_guess = DM::zeros(variables_flat.size1(), 1);
+        int path_index = 0;
+        double segment_start = 0.0;
+        
         for (int i = 0; i < N + 1; ++i) {
             double alpha = static_cast<double>(i) / N;
-            initial_guess(3 * i) = (1 - alpha) * initial_state(0) + alpha * final_position(0);
-            initial_guess(3 * i + 1) = (1 - alpha) * initial_state(1) + alpha * final_position(1);
-            // initial_guess(3 * i + 2) = (1 - alpha) * initial_state(2) + alpha * final_state(2);
+            
+            while (path_index < path_proportions.size() && alpha > path_proportions[path_index]) {
+                segment_start = path_proportions[path_index];
+                ++path_index;
+            }
+            
+            if (path_index >= path_2d_.size() - 1) {
+                path_index = path_2d_.size() - 2;
+            }
+            
+            double segment_alpha = (alpha - segment_start) / (path_proportions[path_index] - segment_start);
+            Vec2f& point1 = path_2d_[path_index];
+            Vec2f& point2 = path_2d_[path_index + 1];
+            
+            initial_guess(3 * i) = (1 - segment_alpha) * point1[0] + segment_alpha * point2[0];
+            initial_guess(3 * i + 1) = (1 - segment_alpha) * point1[1] + segment_alpha * point2[1];
         }
 
         // Solve NLP
@@ -433,6 +448,8 @@ private:
     DM lower_left_to_risk_center_;
     DM global_risk_to_center_;
     Function continuous_risk_map_;
+
+    vec_Vec2f path_2d_;
 
     // casadi optimization relevant declarations
     Function pack_variables_fn_;

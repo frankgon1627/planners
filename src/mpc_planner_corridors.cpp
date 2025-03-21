@@ -234,7 +234,7 @@ private:
         MX objective = 0.0;
         for (int k=0; k < N; ++k){
             MX position = X(Slice(0, 2), k);
-            MX risk_value = continuous_risk_map_(position)[0];
+            MX risk_value = fmax(continuous_risk_map_(position)[0], 0.0);
             MX state_penalty = position - final_position;
             // MX state_penalty = X(Slice(0, 2), k) - X(Slice(0, 2), k+1);
             MX control_penalty = U(Slice(), k);

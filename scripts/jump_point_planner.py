@@ -109,7 +109,6 @@ class JPSPlanner(Node):
             return
         
         # convert start to grid coordinates
-        self.get_logger().info(f"Odometry: {self.odometry.pose.pose.position}")
         sx, sy = self.meters_to_grid(self.odometry.pose.pose.position.x, self.odometry.pose.pose.position.y)
 
         # Convert goal to grid coordinates
@@ -120,7 +119,6 @@ class JPSPlanner(Node):
 
         # Run JPS Algorithm
         path = self.run_jps(start, goal)
-        self.get_logger().info(f"Path: {path}")
 
         # Publish path if found
         if path:

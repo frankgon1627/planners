@@ -98,7 +98,7 @@ class OccupancyGridParser(Node):
 
             # data structure for RVIZ visualization
             marker = Marker()
-            marker.header.frame_id = 'map'
+            marker.header.frame_id = 'odom'
             marker.header.stamp = self.get_clock().now().to_msg()
             marker.ns = "convex_hulls"
             marker.id = i

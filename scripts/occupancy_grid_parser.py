@@ -23,7 +23,7 @@ class OccupancyGridParser(Node):
         self.dialted_occupancy_grid_publisher = self.create_publisher(OccupancyGrid, '/planners/dialted_occupancy_grid', 10)
 
         # self.create_subscription(OccupancyGrid, '/cost_map', self.occupancy_grid_callback, 10)
-        self.create_subscription(OccupancyGrid, '/planners/dialted_occupancy_grid', self.occupancy_grid_callback, 10)
+        self.create_subscription(OccupancyGrid, '/obstacle_detection/positive_obstacle_grid', self.occupancy_grid_callback, 10)
 
         self.occupancy_grid: OccupancyGrid | None = None
         self.hulls: List[np.ndarray[float]] | None = None
@@ -63,7 +63,7 @@ class OccupancyGridParser(Node):
         occupied_points: List[Tuple[float]] = []
         for i in range(self.height):
             for j in range(self.width):
-                if data[i, j] == 100:  # Threshold for occupancy
+                if self.data[i, j] == 100:  # Threshold for occupancy
                     x: float = self.origin[0] + j*self.resolution
                     y: float = self.origin[1] + i*self.resolution
                     occupied_points.append((x, y))

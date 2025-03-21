@@ -28,6 +28,8 @@ class OccupancyGridParser(Node):
         self.occupancy_grid: OccupancyGrid | None = None
         self.hulls: List[np.ndarray[float]] | None = None
 
+        self.dialation: float = 0.75
+
         self.get_logger().info("Occupancy Grid Parser Node Initialized")
 
     def occupancy_grid_callback(self, msg: OccupancyGrid) -> None:

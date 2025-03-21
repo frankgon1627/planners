@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import cv2
 import rclpy
 import numpy as np
 
@@ -19,6 +20,7 @@ class OccupancyGridParser(Node):
 
         self.convex_hull_viz_publisher: Publisher[MarkerArray] = self.create_publisher(MarkerArray, '/convex_hulls_viz', 1)
         self.convex_hull_publisher: Publisher[PolygonArray] = self.create_publisher(PolygonArray, '/convex_hulls', 1)
+        self.dialted_occupancy_grid_publisher = self.create_publisher(OccupancyGrid, '/planners/dialted_occupancy_grid', 10)
 
         # self.create_subscription(OccupancyGrid, '/cost_map', self.occupancy_grid_callback, 10)
         self.create_subscription(OccupancyGrid, '/planners/dialted_occupancy_grid', self.occupancy_grid_callback, 10)
@@ -30,24 +32,38 @@ class OccupancyGridParser(Node):
 
     def occupancy_grid_callback(self, msg: OccupancyGrid) -> None:
         """
-        Generates convex hulls around the obstacles in the occupancy grid.
+        Dialates Occupancy grid and generates convex hulls around the obstacles in the occupancy grid.
         """
-        self.occupancy_grid = msg
+        self.occupancy_grid: OccupancyGrid = msg
+        self.width: int = msg.info.width
+        self.height: int = msg.info.height
+        self.resolution: float = msg.info.resolution
+        self.origin: Tuple[float] = (msg.info.origin.position.x, msg.info.origin.position.y)
+        data: np.ndarray[float] = np.array(msg.data).reshape((self.height, self.width))
 
-        grid_info: MapMetaData = self.occupancy_grid.info
-        width: int = grid_info.width
-        height: int = grid_info.height
-        resolution: float = grid_info.resolution
-        origin: Tuple[float] = (grid_info.origin.position.x, grid_info.origin.position.y)
-        data: np.ndarray[int] = np.array(self.occupancy_grid.data).reshape((height, width))
+        # dialate the occupancy grid data
+        expansion_pixels: int = int(np.ceil(self.dialation / self.resolution))
+        obstacle_mask: np.ndarray = (data == 100).astype(np.uint8)
+        kernel: np.ndarray = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * expansion_pixels + 1, 2 * expansion_pixels + 1))
+        dilated_mask: np.ndarray = cv2.dilate(obstacle_mask, kernel)
+        self.data: np.ndarray = data.copy()
+        self.data[dilated_mask == 1] = 100
+
+        # create and publish the dialted occupancy grid
+        self.dialated_grid: OccupancyGrid = OccupancyGrid()
+        self.dialated_grid.header = self.occupancy_grid.header
+        self.dialated_grid.info = self.occupancy_grid.info
+        self.dialated_grid.data = self.data.astype(np.int8).flatten().tolist()
+        self.dialated_grid.info.origin = self.occupancy_grid.info.origin
+        self.dialted_occupancy_grid_publisher.publish(self.dialated_grid)
 
         # Extract occupied cells
         occupied_points: List[Tuple[float]] = []
-        for i in range(height):
-            for j in range(width):
+        for i in range(self.height):
+            for j in range(self.width):
                 if data[i, j] == 100:  # Threshold for occupancy
-                    x: float = origin[0] + j*resolution
-                    y: float = origin[1] + i*resolution
+                    x: float = self.origin[0] + j*self.resolution
+                    y: float = self.origin[1] + i*self.resolution
                     occupied_points.append((x, y))
 
         # Group occupied cells into clusters (simple grid-based clustering)
@@ -55,7 +71,7 @@ class OccupancyGridParser(Node):
         if len(occupied_points) == 0:
             return []
 
-        clusters: List[np.ndarray[float]] = self.cluster_points(occupied_points, resolution)
+        clusters: List[np.ndarray[float]] = self.cluster_points(occupied_points, self.resolution)
         self.hulls = [self.compute_convex_hull(cluster) for cluster in clusters]
 
         self.get_logger().info(f"Generated {len(self.hulls)} convex hull obstacles.")

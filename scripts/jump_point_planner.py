@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import cv2
 import math
 import rclpy
 import heapq
@@ -20,11 +19,11 @@ class JPSPlanner(Node):
     def __init__(self) -> None:
         super().__init__('jps_planner')
         self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odometry_callback, 10)
-        self.create_subscription(OccupancyGrid, '/obstacle_detection/positive_obstacle_grid', self.occupancy_grid_callback, 10)
+        self.create_subscription(OccupancyGrid, '/planners/dialated_occupancy_grid', self.occupancy_grid_callback, 10)
+        # self.create_subscription(OccupancyGrid, '/planners/combined_map', self.occupancy_grid_callback, 10)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
         self.timer = self.create_timer(0.1, self.generate_trajectory)
         self.path_publisher = self.create_publisher(Path, '/planners/jump_point_path', 10)
-        self.dialted_occupancy_grid_publisher = self.create_publisher(OccupancyGrid, '/planners/dialted_occupancy_grid', 10)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -40,6 +39,7 @@ class JPSPlanner(Node):
         self.goal: PoseStamped | None = None
 
         self.dialation: float = 0.75
+        self.occupied_threshold = 20.0
 
         self.get_logger().info("JPS Planner Node Initialized")
 
@@ -54,21 +54,7 @@ class JPSPlanner(Node):
         self.height: int = msg.info.height
         self.resolution: float = msg.info.resolution
         self.origin: Tuple[float] = (msg.info.origin.position.x, msg.info.origin.position.y)
-        data: np.ndarray[float] = np.array(msg.data).reshape((self.height, self.width))
-
-        expansion_pixels: int = int(np.ceil(self.dialation / self.resolution))
-        obstacle_mask: np.ndarray = (data == 100).astype(np.uint8)
-        kernel: np.ndarray = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * expansion_pixels + 1, 2 * expansion_pixels + 1))
-        dilated_mask: np.ndarray = cv2.dilate(obstacle_mask, kernel)
-        self.data: np.ndarray = data.copy()
-        self.data[dilated_mask == 1] = 100
-
-        self.dialated_grid: OccupancyGrid = OccupancyGrid()
-        self.dialated_grid.header = self.occupancy_grid.header
-        self.dialated_grid.info = self.occupancy_grid.info
-        self.dialated_grid.data = self.data.astype(np.int8).flatten().tolist()
-        self.dialated_grid.info.origin = self.occupancy_grid.info.origin
-        self.dialted_occupancy_grid_publisher.publish(self.dialated_grid)
+        self.data: np.ndarray[float] = np.array(msg.data).reshape((self.height, self.width))
 
     def meters_to_grid(self, x_meters: float, y_meters: float) -> Tuple[int, int]:
         """
@@ -130,22 +116,22 @@ class JPSPlanner(Node):
         if cY + dY < 0 or cY + dY >= self.data.shape[1]:
             return True
         if dX != 0 and dY != 0:
-            if self.data[cX + dX, cY] == 100 and self.data[cX, cY + dY] == 100:
+            if self.data[cX + dX, cY] > self.occupied_threshold and self.data[cX, cY + dY] > self.occupied_threshold:
                 return True
-            if self.data[cX + dX, cY + dY] == 100:
+            if self.data[cX + dX, cY + dY] > self.occupied_threshold:
                 return True
         else:
             if dX != 0:
-                if self.data[cX + dX, cY] == 100:
+                if self.data[cX + dX, cY] > self.occupied_threshold:
                     return True
             else:
-                if self.data[cX, cY + dY] == 100:
+                if self.data[cX, cY + dY] > self.occupied_threshold:
                     return True
         return False
 
 
     def dblock(self, cX: int, cY: int, dX: int, dY: int) -> bool:
-        if self.data[cX - dX, cY] == 100 and self.data[cX, cY - dY] == 100:
+        if self.data[cX - dX, cY] > self.occupied_threshold and self.data[cX, cY - dY] > self.occupied_threshold:
             return True
         else:
             return False

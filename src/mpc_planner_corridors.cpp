@@ -146,6 +146,7 @@ private:
             return;
         }
 
+	path_2d_ = vec_Vec2f{};
         for (const geometry_msgs::msg::PoseStamped& pose : msg->poses) {
             path_2d_.emplace_back(pose.pose.position.x, pose.pose.position.y);
         }

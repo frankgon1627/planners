@@ -22,9 +22,11 @@ class JPSPlanner(Node):
         self.create_subscription(OccupancyGrid, '/planners/dialated_occupancy_grid', self.occupancy_grid_callback, 10)
         # self.create_subscription(OccupancyGrid, '/planners/combined_map', self.occupancy_grid_callback, 10)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
-        self.timer = self.create_timer(0.1, self.generate_trajectory)
+
         self.path_publisher = self.create_publisher(Path, '/planners/jump_point_path', 10)
 
+        self.timer = self.create_timer(0.1, self.generate_trajectory)
+        
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 

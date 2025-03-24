@@ -28,6 +28,7 @@ public:
             "/planners/risk_map", 1, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
         path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
             "/planners/jump_point_path", 1, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
+
         travel_corridors_pub_ = this->create_publisher<decomp_ros_msgs::msg::PolyhedronArray>(
             "/polyhedron_array", 10);
         mpc_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(

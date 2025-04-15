@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import cv2
 import rclpy
 import numpy as np
 
@@ -19,16 +18,13 @@ class OccupancyGridParser(Node):
         super().__init__('convex_hull_extractor')
 
         # self.create_subscription(OccupancyGrid, '/cost_map', self.occupancy_grid_callback, 10)
-        self.create_subscription(OccupancyGrid, '/obstacle_detection/positive_obstacle_grid', self.occupancy_grid_callback, 10)
+        self.create_subscription(OccupancyGrid, '/obstacle_detection/dialated_positive_obstacle_grid', self.occupancy_grid_callback, 10)
 
         self.convex_hull_viz_publisher: Publisher[MarkerArray] = self.create_publisher(MarkerArray, '/convex_hulls_viz', 1)
         self.convex_hull_publisher: Publisher[PolygonArray] = self.create_publisher(PolygonArray, '/convex_hulls', 1)
-        self.dialted_occupancy_grid_publisher = self.create_publisher(OccupancyGrid, '/planners/dialated_occupancy_grid', 10)
 
         self.occupancy_grid: OccupancyGrid | None = None
         self.hulls: List[np.ndarray[float]] | None = None
-
-        self.dialation: float = 0.75
 
         self.get_logger().info("Occupancy Grid Parser Node Initialized")
 
@@ -43,27 +39,11 @@ class OccupancyGridParser(Node):
         self.origin: Tuple[float] = (msg.info.origin.position.x, msg.info.origin.position.y)
         data: np.ndarray[float] = np.array(msg.data).reshape((self.height, self.width))
 
-        # dialate the occupancy grid data
-        expansion_pixels: int = int(np.ceil(self.dialation / self.resolution))
-        obstacle_mask: np.ndarray = (data == 100).astype(np.uint8)
-        kernel: np.ndarray = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * expansion_pixels + 1, 2 * expansion_pixels + 1))
-        dilated_mask: np.ndarray = cv2.dilate(obstacle_mask, kernel)
-        self.data: np.ndarray = data.copy()
-        self.data[dilated_mask == 1] = 100
-
-        # create and publish the dialted occupancy grid
-        self.dialated_grid: OccupancyGrid = OccupancyGrid()
-        self.dialated_grid.header = self.occupancy_grid.header
-        self.dialated_grid.info = self.occupancy_grid.info
-        self.dialated_grid.data = self.data.astype(np.int8).flatten().tolist()
-        self.dialated_grid.info.origin = self.occupancy_grid.info.origin
-        self.dialted_occupancy_grid_publisher.publish(self.dialated_grid)
-
         # Extract occupied cells
         occupied_points: List[Tuple[float]] = []
         for i in range(self.height):
             for j in range(self.width):
-                if self.data[i, j] == 100:  # Threshold for occupancy
+                if data[i, j] == 100:  # Threshold for occupancy
                     x: float = self.origin[0] + j*self.resolution
                     y: float = self.origin[1] + i*self.resolution
                     occupied_points.append((x, y))

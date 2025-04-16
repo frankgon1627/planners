@@ -25,7 +25,7 @@ public:
         polygon_sub_ = this->create_subscription<custom_msgs_pkg::msg::PolygonArray>(
             "/convex_hulls", 1, bind(&MPCPlannerCorridors::polygonsCallback, this, placeholders::_1));
         risk_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-            "/planners/risk_map", 1, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
+            "/planners/filtered_risk_map", 1, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
         path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
             "/planners/jump_point_path", 1, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
 

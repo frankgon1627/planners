@@ -19,7 +19,7 @@ class JPSPlanner(Node):
     def __init__(self) -> None:
         super().__init__('jps_planner')
         self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odometry_callback, 10)
-        self.create_subscription(OccupancyGrid, '/planners/dialated_occupancy_grid', self.occupancy_grid_callback, 10)
+        self.create_subscription(OccupancyGrid, '/obstacle_detection/dialated_positive_obstacle_grid', self.occupancy_grid_callback, 10)
         # self.create_subscription(OccupancyGrid, '/planners/combined_map', self.occupancy_grid_callback, 10)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
 

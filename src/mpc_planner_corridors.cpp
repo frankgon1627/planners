@@ -101,8 +101,8 @@ private:
         }
 
         vector<vector<double>> grid = {grid_x, grid_y};
-        continuous_risk_map_ = interpolant("interp", "bspline", grid, risk_values, {{"degree", vector<int>{3, 3}}});
-        // continuous_risk_map_ = interpolant("interp", "linear", grid, risk_values);
+        // continuous_risk_map_ = interpolant("interp", "bspline", grid, risk_values, {{"degree", vector<int>{3, 3}}});
+        continuous_risk_map_ = interpolant("interp", "linear", grid, risk_values);
     
         // test with dummy risk map node
         // vector<double> test_point1 = {0.8, 1.8};
@@ -329,7 +329,7 @@ private:
         
         // Initial guess for optimization
         DM initial_guess = DM::zeros(variables_flat.size1(), 1);
-        int path_index = 0;
+        long unsigned int path_index = 0;
         double segment_start = 0.0;
         
         for (int i = 0; i < N + 1; ++i) {

@@ -18,7 +18,7 @@ class OccupancyGridParser(Node):
         super().__init__('convex_hull_extractor')
 
         # self.create_subscription(OccupancyGrid, '/cost_map', self.occupancy_grid_callback, 10)
-        self.create_subscription(OccupancyGrid, '/obstacle_detection/dialated_positive_obstacle_grid', self.occupancy_grid_callback, 10)
+        self.create_subscription(OccupancyGrid, '/obstacle_detection/dilated_positive_obstacle_grid', self.occupancy_grid_callback, 10)
 
         self.convex_hull_viz_publisher: Publisher[MarkerArray] = self.create_publisher(MarkerArray, '/convex_hulls_viz', 1)
         self.convex_hull_publisher: Publisher[PolygonArray] = self.create_publisher(PolygonArray, '/convex_hulls', 1)

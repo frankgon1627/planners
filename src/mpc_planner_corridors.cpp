@@ -6,8 +6,8 @@
 #include <geometry_msgs/msg/polygon.hpp>
 #include <geometry_msgs/msg/point32.hpp>
 #include <custom_msgs_pkg/msg/polygon_array.hpp>
-#include <decomp_ros_msgs/msg/polyhedron_array.hpp>
 #include <visualization_msgs/msg/marker.hpp>
+#include <decomp_ros_msgs/msg/polyhedron_array.hpp>
 #include <decomp_ros_util/data_ros_utils.hpp>
 #include <decomp_util/iterative_decomp.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -25,7 +25,7 @@ public:
         polygon_sub_ = this->create_subscription<custom_msgs_pkg::msg::PolygonArray>(
             "/convex_hulls", 1, bind(&MPCPlannerCorridors::polygonsCallback, this, placeholders::_1));
         risk_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-            "/planners/filtered_risk_map", 1, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
+            "/obstacle_detection/filtered_risk_map", 1, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
         path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
             "/planners/jump_point_path", 1, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
 
@@ -67,73 +67,19 @@ private:
 
     void riskMapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg){
         risk_map_ = msg;
+        height_ = risk_map_->info.height;
+        width_ = risk_map_->info.width;
+        resolution_ = risk_map_->info.resolution;
+
         global_to_lower_left_ = reshape(DM({
                                         risk_map_->info.origin.position.x,
                                         risk_map_->info.origin.position.y,
                                         0.0}), 3, 1);
         lower_left_to_risk_center_ = reshape(DM({
-                                            risk_map_->info.height*risk_map_->info.resolution/2,
-                                            risk_map_->info.width*risk_map_->info.resolution/2,
+                                            height_*resolution_/2,
+                                            width_*resolution_/2,
                                             0.0}), 3, 1);
         global_risk_to_center_ = global_to_lower_left_ - lower_left_to_risk_center_;
-
-        int height = risk_map_->info.height;
-        int width = risk_map_->info.width;
-        double resolution = risk_map_->info.resolution;
-
-        vector<double> grid_x(height);
-        vector<double> grid_y(width);
-
-        for (int i = 0; i < height; i++) {
-            grid_x[i] = risk_map_->info.origin.position.x + (i + 0.5) * resolution;
-        }
-        for (int j = 0; j < width; j++) {
-            grid_y[j] = risk_map_->info.origin.position.y + (j + 0.5) * resolution;
-        }
-
-        vector<double> risk_values(width * height);
-        for (int j = 0; j < height; j++) {
-            for (int i = 0; i < width; i++) {
-            int idx = j * width + i;
-            int occ_value = risk_map_->data[idx];
-            risk_values[idx] = static_cast<double>(occ_value);
-            }
-        }
-
-        vector<vector<double>> grid = {grid_x, grid_y};
-        // continuous_risk_map_ = interpolant("interp", "bspline", grid, risk_values, {{"degree", vector<int>{3, 3}}});
-        continuous_risk_map_ = interpolant("interp", "linear", grid, risk_values);
-    
-        // test with dummy risk map node
-        // vector<double> test_point1 = {0.8, 1.8};
-        // DM query_point1 = DM(test_point1);
-        // DM output1 = continuous_risk_map_(query_point1);
-        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point1[0], test_point1[1], output1.get_str().c_str());
-
-        // vector<double> test_point2 = {3.8, 1.8};
-        // DM query_point2 = DM(test_point2);
-        // DM output2 = continuous_risk_map_(query_point2);
-        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point2[0], test_point2[1], output2.get_str().c_str());
-
-        // vector<double> test_point3 = {3.8, 9.7};
-        // DM query_point3 = DM(test_point3);
-        // DM output3 = continuous_risk_map_(query_point3);
-        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point3[0], test_point3[1], output3.get_str().c_str());
-
-        // vector<double> test_point4 = {0.9, 9.8};
-        // DM query_point4 = DM(test_point4);
-        // DM output4 = continuous_risk_map_(query_point4);
-        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point4[0], test_point4[1], output4.get_str().c_str());
-
-        // vector<double> test_point5 = {2.1, 5.9};
-        // DM query_point5 = DM(test_point5);
-        // DM output5 = continuous_risk_map_(query_point5);
-        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point5[0], test_point5[1], output5.get_str().c_str());
-
-        // vector<double> test_point6 = {8.1, 6.0};
-        // DM query_point6 = DM(test_point6);
-        // DM output6 = continuous_risk_map_(query_point6);
-        // RCLCPP_INFO(this->get_logger(), "Risk Map Interpolated at (%f, %f): %s", test_point6[0], test_point6[1], output6.get_str().c_str());
     }
 
     void pathCallback(const nav_msgs::msg::Path::SharedPtr msg) {
@@ -147,7 +93,7 @@ private:
             return;
         }
 
-	path_2d_ = vec_Vec2f{};
+	    path_2d_ = vec_Vec2f{};
         for (const geometry_msgs::msg::PoseStamped& pose : msg->poses) {
             path_2d_.emplace_back(pose.pose.position.x, pose.pose.position.y);
         }
@@ -187,6 +133,33 @@ private:
     }
 
     void generateTrajectory(vec_E<Polyhedron2D> polyhedrons, vector<double>& goal_position, vector<double>& path_proportions){
+        // generate the risk map for the optimization
+        vector<double> grid_x(height_);
+        vector<double> grid_y(width_);
+
+        for (int i = 0; i < height_; i++) {
+            grid_x[i] = risk_map_->info.origin.position.x + (i + 0.5) * resolution_;
+        }
+        for (int j = 0; j < width_; j++) {
+            grid_y[j] = risk_map_->info.origin.position.y + (j + 0.5) * resolution_;
+        }
+
+        vector<double> risk_values(width_ * height_);
+        for (int j = 0; j < height_; j++) {
+            for (int i = 0; i < width_; i++) {
+            int idx = j * width_ + i;
+            int occ_value = risk_map_->data[idx];
+            risk_values[idx] = static_cast<double>(occ_value);
+            }
+        }
+
+        vector<vector<double>> grid = {grid_x, grid_y};
+
+        Dict interpolant_options;
+        interpolant_options["jit"] = true;
+        Function continuous_risk_map = interpolant("interp", "linear", grid, risk_values, interpolant_options);
+
+        // set up optimization problem
         const int N = 150;
         double dt = 0.1;
 
@@ -221,10 +194,10 @@ private:
         lower_bounds[0](0, Slice()) = risk_map_->info.origin.position.x * DM::ones(1, lower_bounds[0].size2());
         lower_bounds[0](1, Slice()) = risk_map_->info.origin.position.y * DM::ones(1, lower_bounds[0].size2());
         upper_bounds[0](0, Slice()) = (risk_map_->info.origin.position.x + 
-                                        risk_map_->info.resolution * risk_map_->info.height
+                                        resolution_ * height_
                                         ) *DM::ones(1, lower_bounds[0].size2());
         upper_bounds[0](1, Slice()) = (risk_map_->info.origin.position.y + 
-                                        risk_map_->info.resolution * risk_map_->info.width
+                                        resolution_ * width_
                                         ) * DM::ones(1, lower_bounds[0].size2());
 
         // running state cost, control cost, and risk cost
@@ -235,13 +208,13 @@ private:
         MX objective = 0.0;
         for (int k=0; k < N; ++k){
             MX position = X(Slice(0, 2), k);
-            MX risk_value = fmax(continuous_risk_map_(position)[0], 0.0);
+            MX risk_value = fmax(continuous_risk_map(position)[0], 0.0);
             MX state_penalty = position - final_position;
             // MX state_penalty = X(Slice(0, 2), k) - X(Slice(0, 2), k+1);
             MX control_penalty = U(Slice(), k);
             objective = objective + mtimes(mtimes(state_penalty.T(), Q), state_penalty);
             objective = objective + mtimes(mtimes(control_penalty.T(), R), control_penalty);
-            objective = objective + risk_value;
+            objective = objective + risk_lambda_ * risk_value;
         }   
 
         // initial state constraint
@@ -298,11 +271,12 @@ private:
         MX constraints = vertcat(equality_constraints, r_dot_constraint, polyhedron_constraint);
 
         // set up NLP solver and solve the program
-        Function solver = nlpsol("solver", "ipopt", MXDict{
+        MXDict nlp = {
             {"x", variables_flat},
             {"f", objective},
-            {"g", constraints}
-        });
+            {"g", constraints}};
+        Dict nlp_options;
+        Function solver = nlpsol("solver", "ipopt", nlp, nlp_options);
 
         // Set constraint bounds
         DM zero_bg_constraints = vertcat(
@@ -449,11 +423,14 @@ private:
     DM global_to_lower_left_;
     DM lower_left_to_risk_center_;
     DM global_risk_to_center_;
-    Function continuous_risk_map_;
+    int height_;
+    int width_;
+    double resolution_;
 
     vec_Vec2f path_2d_;
 
     // casadi optimization relevant declarations
+    double risk_lambda_ = 20.0;
     Function pack_variables_fn_;
     Function unpack_variables_fn_;
     DMVector lower_bounds_;

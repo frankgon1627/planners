@@ -23,6 +23,8 @@ public:
             "/dlio/odom_node/odom", 1, bind(&MPCPlannerCorridors::odometryCallback, this, placeholders::_1));
         path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
             "/planners/a_star_path", 1, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
+        combined_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
+            "/obstacle_detection/combined_map", 1, bind(&MPCPlannerCorridors::occupancyGridCallback, this, placeholders::_1));
 
         mpc_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(
             "/planners/mpc_path", 10);
@@ -36,15 +38,15 @@ private:
         odometry_ = msg;
     }
 
-    void riskMapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg){
-        risk_map_ = msg;
-        height_ = risk_map_->info.height;
-        width_ = risk_map_->info.width;
-        resolution_ = risk_map_->info.resolution;
+    void occupancyGridCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg){
+        combined_map_ = msg;
+        height_ = combined_map_->info.height;
+        width_ = combined_map_->info.width;
+        resolution_ = combined_map_->info.resolution;
 
         global_to_lower_left_ = reshape(DM({
-                                        risk_map_->info.origin.position.x,
-                                        risk_map_->info.origin.position.y,
+                                        combined_map_->info.origin.position.x,
+                                        combined_map_->info.origin.position.y,
                                         0.0}), 3, 1);
         lower_left_to_risk_center_ = reshape(DM({
                                             height_*resolution_/2,
@@ -59,12 +61,12 @@ private:
             return;
         }
 
-        if (!risk_map_) {
+        if (!combined_map_) {
             RCLCPP_WARN(this->get_logger(), "No Risk Map Received Yet.");
             return;
         }
 
-	    path_2d_ = msg;
+        path_2d_ = msg;
 
         // generate cumulative proportion of path length metric
         vector<double> cum_distances;
@@ -120,12 +122,12 @@ private:
         upper_bounds[1] = repmat(DM(vector<double>{1.5, pi/4}), 1, upper_bounds[1].size2());
 
         // state bounds
-        lower_bounds[0](0, Slice()) = risk_map_->info.origin.position.x * DM::ones(1, lower_bounds[0].size2());
-        lower_bounds[0](1, Slice()) = risk_map_->info.origin.position.y * DM::ones(1, lower_bounds[0].size2());
-        upper_bounds[0](0, Slice()) = (risk_map_->info.origin.position.x + 
+        lower_bounds[0](0, Slice()) = combined_map_->info.origin.position.x * DM::ones(1, lower_bounds[0].size2());
+        lower_bounds[0](1, Slice()) = combined_map_->info.origin.position.y * DM::ones(1, lower_bounds[0].size2());
+        upper_bounds[0](0, Slice()) = (combined_map_->info.origin.position.x + 
                                         resolution_ * height_
                                         ) *DM::ones(1, lower_bounds[0].size2());
-        upper_bounds[0](1, Slice()) = (risk_map_->info.origin.position.y + 
+        upper_bounds[0](1, Slice()) = (combined_map_->info.origin.position.y + 
                                         resolution_ * width_
                                         ) * DM::ones(1, lower_bounds[0].size2());
 
@@ -317,12 +319,13 @@ private:
 
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
+    rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr combined_map_sub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr mpc_path_pub_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr mpc_path_points_;
 
     nav_msgs::msg::Odometry::SharedPtr odometry_;
     nav_msgs::msg::Path::SharedPtr path_2d_;
-    nav_msgs::msg::OccupancyGrid::SharedPtr risk_map_;
+    nav_msgs::msg::OccupancyGrid::SharedPtr combined_map_;
     DM global_to_lower_left_;
     DM lower_left_to_risk_center_;
     DM global_risk_to_center_;

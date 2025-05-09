@@ -38,8 +38,26 @@ ament_target_dependencies(mpc_planner_corridors
   casadi
 )
 
+add_executable(mpc_planner_bare src/mpc_planner_bare.cpp)
+target_link_libraries(mpc_planner_bare casadi)
+target_include_directories(mpc_planner_bare PRIVATE include ${DECOMP_UTIL_INCLUDE_DIRS} ${DECOMP_ROS_UTIL_INCLUDE_DIRS})
+ament_target_dependencies(mpc_planner_bare
+  rclcpp 
+  sensor_msgs 
+  nav_msgs 
+  geometry_msgs
+  visualization_msgs
+  custom_msgs_pkg
+  decomp_ros_util
+  decomp_util 
+  decomp_ros_msgs
+  pcl_conversions 
+  casadi
+)
+
 install(TARGETS
-mpc_planner_corridors
+  mpc_planner_corridors
+  mpc_planner_bare
   DESTINATION lib/${PROJECT_NAME}
 )
 

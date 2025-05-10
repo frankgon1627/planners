@@ -5,6 +5,8 @@ from heapq import heappush, heappop
 from rclpy.node import Node
 from nav_msgs.msg import OccupancyGrid, Path, Odometry
 from geometry_msgs.msg import PoseStamped
+from tf2_ros import Buffer, TransformListener
+import tf2_geometry_msgs
 from typing import Dict, Tuple, List
 
 class AStarPlanner(Node):
@@ -13,7 +15,12 @@ class AStarPlanner(Node):
         self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odometry_callback, 10)
         self.create_subscription(OccupancyGrid, '/obstacle_detection/combined_map', self.occupancy_grid_callback, 10)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
-        self.publisher_path = self.create_publisher(Path, '/planners/a_star_path', 10)
+        self.path_publisher = self.create_publisher(Path, '/planners/a_star_path', 10)
+
+        self.timer = self.create_timer(0.1, self.generate_trajectory)
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
         self.odometry: Odometry | None = None
         self.occupancy_grid: OccupancyGrid | None = None
         self.resolution: float | None = None
@@ -50,8 +57,23 @@ class AStarPlanner(Node):
         grid_y: int = int((y_meters - self.origin[1]) / self.resolution)
         return grid_x, grid_y
 
-    def goal_callback(self, msg: PoseStamped):
-        """Receives goal position and triggers path planning"""
+    def goal_callback(self, msg: PoseStamped) -> None:
+        """Receives goal position"""
+        self.goal = msg
+
+        # convert goal to map frame if not in map frame
+        if self.goal.header.frame_id != "odom":
+            in_map_frame = False
+            while not in_map_frame:
+                try:
+                    transform = self.tf_buffer.lookup_transform('odom', self.goal.header.frame_id, rclpy.time.Time())
+                    self.goal = tf2_geometry_msgs.do_transform_pose_stamped(self.goal, transform)
+                    self.get_logger().info(f"Converted Goal to: {self.goal.pose.position}")
+                    in_map_frame = True
+                except:
+                    self.get_logger().warn("Failed to get Transform from base_link to map")
+
+    def generate_trajectory(self) -> None:
         if self.occupancy_grid is None:
             self.get_logger().warn("No Occupancy Grid Received yet.")
             return
@@ -60,10 +82,14 @@ class AStarPlanner(Node):
             self.get_logger().warn("No Odometry Received yet.")
             return
         
+        if self.goal is None:
+            self.get_logger().warn("No Goal Received yet.")
+            return
+        
         # convert start and goal to grid coordinates
         self.get_logger().info(f"Odometry: {self.odometry.pose.pose.position}")
         sx, sy = self.meters_to_grid(self.odometry.pose.pose.position.x, self.odometry.pose.pose.position.y)
-        gx, gy = self.meters_to_grid(msg.pose.position.x, msg.pose.position.y)
+        gx, gy = self.meters_to_grid(self.goal.pose.position.x, self.goal.pose.position.y)
         start: Tuple[int, int] = (sy, sx)
         goal: Tuple[int, int] = (gy, gx)
 
@@ -147,7 +173,7 @@ class AStarPlanner(Node):
             pose.pose.position.x = gx * self.resolution + self.origin[0]
             pose.pose.position.y = gy * self.resolution + self.origin[1]
             path_msg.poses.append(pose)
-        self.publisher_path.publish(path_msg)
+        self.path_publisher.publish(path_msg)
         self.get_logger().info("Published planned path.")
 
     def heuristic(self, node: Tuple[int, int], goal: Tuple[int, int]) -> float:

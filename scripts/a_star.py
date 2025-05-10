@@ -142,8 +142,6 @@ class AStarPlanner(Node):
                         distance_cost[neighbor] = new_distance_cost
                         # add distance to goal if we want to run astar
                         heuristic = new_cost + ((goal[0] - neighbor[0])**2 + (goal[1] - neighbor[1])**2)**0.5
-                        self.get_logger().info(f"{priority_queue}")
-                        self.get_logger().info(f"{(heuristic, neighbor)}")
                         # add the neighbor into the queue based on the heuristic value
                         heappush(priority_queue, (heuristic, neighbor))
                         # assign the parent pointer

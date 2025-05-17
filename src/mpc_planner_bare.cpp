@@ -7,6 +7,8 @@
 #include <geometry_msgs/msg/polygon.hpp>
 #include <geometry_msgs/msg/point32.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <decomp_ros_util/data_ros_utils.hpp>
+#include <decomp_ros_msgs/msg/polyhedron_array.hpp>
 #include <custom_msgs_pkg/msg/polygon_array.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <pcl_conversions/pcl_conversions.h>
@@ -25,7 +27,9 @@ public:
             "/planners/a_star_path", 1, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
         combined_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             "/obstacle_detection/combined_map", 1, bind(&MPCPlannerCorridors::occupancyGridCallback, this, placeholders::_1));
-
+        
+        travel_corridors_pub_ = this->create_publisher<decomp_ros_msgs::msg::PolyhedronArray>(
+            "/polyhedron_array", 10);
         mpc_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(
             "/planners/mpc_path", 10);
         mpc_path_points_ = this->create_publisher<visualization_msgs::msg::Marker>(
@@ -67,6 +71,7 @@ private:
         }
 
         path_2d_ = msg;
+        vector<double> goal_position = {msg->poses.back().pose.position.x, msg->poses.back().pose.position.y};
 
         // generate cumulative proportion of path length metric
         vector<double> cum_distances;
@@ -85,11 +90,54 @@ private:
             path_proportions.push_back(length / total_length);
         }
         
-        vector<double> goal_position = {msg->poses.back().pose.position.x, msg->poses.back().pose.position.y};
-        generateTrajectory(goal_position, path_proportions);
+        // set up rectangle around each line segment in the path
+        vector<vector<pair<double, double>>> corridors_vertices;
+        for (unsigned int i=0; i<path_2d_->poses.size() - 1; ++i){
+            geometry_msgs::msg::PoseStamped& point1 = path_2d_->poses[i];
+            geometry_msgs::msg::PoseStamped& point2 = path_2d_->poses[i+1];
+            double dist_squared = pow(point1.pose.position.x - point2.pose.position.x, 2) + pow(point1.pose.position.y - point2.pose.position.y, 2);
+            double dist = pow(dist_squared, 0.5);
+            double angle = atan2(point2.pose.position.y - point1.pose.position.y, point2.pose.position.x - point1.pose.position.x);
+            double width = 0.5;
+            vector<pair<double, double>> vertices;
+            // points are ordered in counter clockwise order
+            vertices.push_back({point1.pose.position.x + width * cos(angle + M_PI/2), 
+                                point1.pose.position.y + width * sin(angle + M_PI/2)});
+            vertices.push_back({point1.pose.position.x - width * cos(angle + M_PI/2), 
+                                point1.pose.position.y - width * sin(angle + M_PI/2)});
+            vertices.push_back({point2.pose.position.x - width * cos(angle + M_PI/2), 
+                                point2.pose.position.y - width * sin(angle + M_PI/2)});
+            vertices.push_back({point2.pose.position.x + width * cos(angle + M_PI/2), 
+                                point2.pose.position.y + width * sin(angle + M_PI/2)});
+            corridors_vertices.push_back(vertices);
+        }
+
+        // generate polyhedron via hyperplanes for each corridor
+        vec_E<Polyhedron2D> corridor_polyhedrons;
+        for (const vector<pair<double, double>>& vertices : corridors_vertices){
+            Polyhedron2D polyhedron;
+            for (size_t i=0; i< vertices.size(); ++i){
+                pair<double, double> vertex_1 =  vertices[i];
+                pair<double, double> vertex_2 = vertices[(i+1) % vertices.size()];
+                
+                // make a hyperplane defined by a point and the normal
+                Vec2f line_vector = {vertex_2.first - vertex_1.first, vertex_2.second - vertex_1.second};
+                Vec2f normal = {line_vector[1], -line_vector[0]};
+                Hyperplane2D hyperplane;
+                hyperplane.n_ = normal.normalized();
+                hyperplane.p_ = Vec2f{vertex_1.first, vertex_1.second};
+                polyhedron.add(hyperplane);
+            }
+            corridor_polyhedrons.push_back(polyhedron);
+        }
+        decomp_ros_msgs::msg::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(corridor_polyhedrons);
+        poly_msg.header.frame_id = "odom";
+        travel_corridors_pub_->publish(poly_msg);
+
+        generateTrajectory(corridor_polyhedrons, goal_position, path_proportions);
     }
 
-    void generateTrajectory(vector<double>& goal_position, vector<double>& path_proportions){
+    void generateTrajectory(vec_E<Polyhedron2D> corridor_polyhedrons, vector<double>& goal_position, vector<double>& path_proportions){
         // set up optimization problem
         const int N = 150;
         double dt = 0.1;
@@ -170,6 +218,25 @@ private:
             U(1, Slice()));
         MX x_next = x_now + delta_x;
         MX dynamics_constraint = reshape(x_next - X(Slice(), Slice(1, N+1)), -1, 1);
+
+        // polyhedron constraints
+        vector<MX> polyhedron_constraint_vector;
+        int last_k = 0;
+        for(size_t i=0; i < corridor_polyhedrons.size(); ++i){
+            int next_k = static_cast<int>(path_proportions[i] * N);
+            vec_E<Hyperplane2D> hyperplanes = corridor_polyhedrons[i].hyperplanes();
+            for(int k=last_k; k < next_k; ++k){
+                // ensure point is in the polyhedron
+                for(Hyperplane2D hyperplane : hyperplanes){
+                    Vec2f normal = hyperplane.n_;
+                    Vec2f point = hyperplane.p_;
+                    MX value = normal[0]*(X(0, k) - point[0]) + normal[1]*(X(1, k) - point[1]);
+                    polyhedron_constraint_vector.push_back(value);
+                }
+            }
+            last_k = next_k;
+        }
+        MX polyhedron_constraint = vertcat(polyhedron_constraint_vector);
         
         MX equality_constraints = vertcat(
             initial_state_constraint, 
@@ -178,7 +245,7 @@ private:
             final_control_constraint,
             dynamics_constraint,
             v_dot_constraint);
-        MX constraints = vertcat(equality_constraints, r_dot_constraint);
+        MX constraints = vertcat(equality_constraints, r_dot_constraint, polyhedron_constraint);
 
         // set up NLP solver and solve the program
         MXDict nlp = {
@@ -199,11 +266,13 @@ private:
         DM lbg = vertcat(
             zero_bg_constraints, 
             -DM::ones(v_dot_constraint.size1(), 1),
-            -(pi/4)*DM::ones(r_dot_constraint.size1(), 1));
+            -(pi/4)*DM::ones(r_dot_constraint.size1(), 1),
+            -DM::inf(polyhedron_constraint.size1(), 1));
         DM ubg = vertcat(
             zero_bg_constraints,
             DM::ones(v_dot_constraint.size1(), 1),
-            (pi/4)*DM::ones(r_dot_constraint.size1(), 1));
+            (pi/4)*DM::ones(r_dot_constraint.size1(), 1),
+            DM::zeros(polyhedron_constraint.size1(), 1));
 
         // Flatten decision variable bounds
         DM lbx = pack_variables_fn(lower_bounds)[0];
@@ -320,6 +389,7 @@ private:
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr combined_map_sub_;
+    rclcpp::Publisher<decomp_ros_msgs::msg::PolyhedronArray>::SharedPtr travel_corridors_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr mpc_path_pub_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr mpc_path_points_;
 

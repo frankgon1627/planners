@@ -16,6 +16,7 @@ class AStarPlanner(Node):
         self.create_subscription(OccupancyGrid, '/obstacle_detection/combined_map', self.occupancy_grid_callback, 10)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
         self.path_publisher = self.create_publisher(Path, '/planners/a_star_path', 10)
+        self.sparse_path_publisher = self.create_publisher(Path, '/planners/sparse_a_star_path', 10)
 
         self.timer = self.create_timer(0.1, self.generate_trajectory)
         self.tf_buffer = Buffer()
@@ -87,17 +88,16 @@ class AStarPlanner(Node):
             return
         
         # convert start and goal to grid coordinates
-        self.get_logger().info(f"Odometry: {self.odometry.pose.pose.position}")
         sx, sy = self.meters_to_grid(self.odometry.pose.pose.position.x, self.odometry.pose.pose.position.y)
         gx, gy = self.meters_to_grid(self.goal.pose.position.x, self.goal.pose.position.y)
         start: Tuple[int, int] = (sy, sx)
         goal: Tuple[int, int] = (gy, gx)
 
-        self.get_logger().info(f"Set start at ({sx}, {sy}) in grid coordinates.")
-        self.get_logger().info(f"Received goal at ({gx}, {gy}) in grid coordinates.")
-        path: List[Tuple[int, int]] = self.a_star(start, goal)
-        if path:
-            self.publish_path(path)
+        dense_path: List[Tuple[int, int]] = self.a_star(start, goal)
+        if dense_path:
+            self.publish_path(dense_path, sparse=False)
+            sparse_path: np.ndarray[float] = self.douglas_peucker(dense_path, 0.25)
+            self.publish_path(sparse_path, sparse=True)
 
     def is_valid(self, x: int, y: int) -> bool:
         """Checks if a position is within bounds and not an obstacle"""
@@ -158,8 +158,42 @@ class AStarPlanner(Node):
             current = came_from[current]
         path.append(current)
         return path[::-1]
+    
+    def douglas_peucker(self, path: List[Tuple[int, int]], epsilon: float) -> np.ndarray:
+        """
+        Creates a sparse representation of a path by keeping the middle intermediate
+        point when looking at a overarching line segment
+        """
+        if path is None or len(path) < 3:
+            return path
+        
+        # convert to numpy array
+        path = np.array(path)
+        
+        d_max = 0
+        max_index = 0
 
-    def publish_path(self, path: List[Tuple[int, int]]):
+        # initial line vector
+        line_vector = path[-1] - path[0]
+        # determine maximum distance
+        for i in range(1, path.shape[0]):
+            # distance from point to line
+            dist = np.linalg.norm(np.cross(line_vector, path[-1] - path[i])) / np.linalg.norm(line_vector)
+            if dist > d_max:
+                max_index = i
+                d_max = dist
+
+        # found far off point, recurse on left and right subpaths
+        if d_max > epsilon:
+            left_branch = self.douglas_peucker(path[:max_index+1], epsilon)
+            right_branch = self.douglas_peucker(path[max_index:], epsilon)
+            sparse_path = np.vstack([left_branch[:-1], right_branch])
+        # no need to include intermediate points
+        else:
+            sparse_path = np.vstack([path[0], path[-1]])
+        return sparse_path
+
+    def publish_path(self, path: List[Tuple[int, int]], sparse: bool = False) -> None:
         """Publishes the computed path as a ROS 2 Path message"""
         path_msg: Path = Path()
         path_msg.header.frame_id = "odom"
@@ -171,8 +205,10 @@ class AStarPlanner(Node):
             pose.pose.position.x = gx * self.resolution + self.origin[0]
             pose.pose.position.y = gy * self.resolution + self.origin[1]
             path_msg.poses.append(pose)
-        self.path_publisher.publish(path_msg)
-        self.get_logger().info("Published planned path.")
+        if sparse:
+            self.sparse_path_publisher.publish(path_msg)
+        else:
+            self.path_publisher.publish(path_msg)
 
     def heuristic(self, node: Tuple[int, int], goal: Tuple[int, int]) -> float:
         """Euclidean heuristic for A*"""

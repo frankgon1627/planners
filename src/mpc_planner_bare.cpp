@@ -73,7 +73,21 @@ private:
         path_2d_ = msg;
 
         if (path_2d_->poses.size() < 2) {
-            RCLCPP_WARN(this->get_logger(), "Path has less than 2 points.");
+            RCLCPP_WARN(this->get_logger(), "Path has less than 2 points. Publishing stationary path.");
+            nav_msgs::msg::Path stationary_path;
+            stationary_path.header.stamp = this->now();
+            stationary_path.header.frame_id = "odom";
+
+            geometry_msgs::msg::PoseStamped stationary_pose;
+            stationary_pose.header.stamp = this->now();
+            stationary_pose.header.frame_id = "odom";
+            stationary_pose.pose.position.x = odometry_->pose.pose.position.x;
+            stationary_pose.pose.position.y = odometry_->pose.pose.position.y;
+            stationary_pose.pose.position.z = 0.0;
+            for(int i=0; i<N_; ++i){
+                stationary_path.poses.push_back(stationary_pose);
+            }
+            mpc_path_pub_->publish(stationary_path);
             return;
         }
         
@@ -145,11 +159,9 @@ private:
 
     void generateTrajectory(vec_E<Polyhedron2D> corridor_polyhedrons, vector<double>& goal_position, vector<double>& path_proportions){
         // set up optimization problem
-        const int N = 150;
-        double dt = 0.1;
 
-        MX X = MX::sym("state_variables", 3, N + 1);
-        MX U = MX::sym("control_variables", 2, N);
+        MX X = MX::sym("state_variables", 3, N_ + 1);
+        MX U = MX::sym("control_variables", 2, N_);
 
         vector<MX> variables_list = {X, U};
         vector<string> variables_name = {"states", "inputs"};
@@ -190,7 +202,7 @@ private:
         vector<vector<double>> R_vals = {{1, 0}, {0, 1/pi}};
         DM R = DM(R_vals);
         MX objective = 0.0;
-        for (int k=0; k < N; ++k){
+        for (int k=0; k < N_; ++k){
             MX position = X(Slice(0, 2), k);
             MX state_penalty = position - final_position;
             // MX state_penalty = X(Slice(0, 2), k) - X(Slice(0, 2), k+1);
@@ -203,32 +215,32 @@ private:
         MX initial_state_constraint = reshape(X(Slice(), 0) - initial_state, -1, 1);
 
         // final state constraint
-        MX final_state_constraint = reshape(X(Slice(0, 2), N) - final_position, -1, 1);
+        MX final_state_constraint = reshape(X(Slice(0, 2), N_) - final_position, -1, 1);
 
         // initial control constraint
         MX initial_control_constraint = reshape(U(Slice(), 0), -1, 1);
 
         // final control constraint
-        MX final_control_constraint = reshape(U(Slice(), N-1), -1, 1);
+        MX final_control_constraint = reshape(U(Slice(), N_-1), -1, 1);
 
         // add acceleration constraint
-        MX v_dot_constraint = reshape((1/dt)*(U(0, Slice(1, N)) - U(0, Slice(0, N-1))), -1, 1);
-        MX r_dot_constraint = reshape((1/dt)*(U(1, Slice(1, N)) - U(1, Slice(0, N-1))), -1, 1);
+        MX v_dot_constraint = reshape((1/dt_)*(U(0, Slice(1, N_)) - U(0, Slice(0, N_-1))), -1, 1);
+        MX r_dot_constraint = reshape((1/dt_)*(U(1, Slice(1, N_)) - U(1, Slice(0, N_-1))), -1, 1);
 
         // dynamics constraints
-        MX x_now = X(Slice(), Slice(0, N));
-        MX delta_x = dt * vertcat(
-            U(0, Slice()) * cos(X(2, Slice(0, N))),
-            U(0, Slice()) * sin(X(2, Slice(0, N))),
+        MX x_now = X(Slice(), Slice(0, N_));
+        MX delta_x = dt_ * vertcat(
+            U(0, Slice()) * cos(X(2, Slice(0, N_))),
+            U(0, Slice()) * sin(X(2, Slice(0, N_))),
             U(1, Slice()));
         MX x_next = x_now + delta_x;
-        MX dynamics_constraint = reshape(x_next - X(Slice(), Slice(1, N+1)), -1, 1);
+        MX dynamics_constraint = reshape(x_next - X(Slice(), Slice(1, N_+1)), -1, 1);
 
         // polyhedron constraints
         vector<MX> polyhedron_constraint_vector;
         int last_k = 0;
         for(size_t i=0; i < corridor_polyhedrons.size(); ++i){
-            int next_k = static_cast<int>(path_proportions[i] * N);
+            int next_k = static_cast<int>(path_proportions[i] * N_);
             vec_E<Hyperplane2D> hyperplanes = corridor_polyhedrons[i].hyperplanes();
             for(int k=last_k; k < next_k; ++k){
                 // ensure point is in the polyhedron
@@ -288,8 +300,8 @@ private:
         long unsigned int path_index = 0;
         double segment_start = 0.0;
         
-        for (int i = 0; i < N + 1; ++i) {
-            double alpha = static_cast<double>(i) / N;
+        for (int i = 0; i < N_ + 1; ++i) {
+            double alpha = static_cast<double>(i) / N_;
             
             while (path_index < path_proportions.size() && alpha > path_proportions[path_index]) {
                 segment_start = path_proportions[path_index];
@@ -326,7 +338,7 @@ private:
 
         // Store solution in a trajectory container
         vector<vector<double>> trajectory;
-        for (int i = 0; i < N+1; ++i) {
+        for (int i = 0; i < N_+1; ++i) {
             vector<double> state{
                 static_cast<double>(unpacked_solution[0](0, i)), 
                 static_cast<double>(unpacked_solution[0](1, i)), 
@@ -410,6 +422,8 @@ private:
 
 
     // casadi optimization relevant declarations
+    const int N_ = 150;
+    const double dt_ = 0.1;
     double risk_lambda_ = 20.0;
     Function pack_variables_fn_;
     Function unpack_variables_fn_;

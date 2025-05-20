@@ -22,8 +22,8 @@ class DStarLite(Node):
         
         self.create_timer(0.1, self.generate_trajectory)
 
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.tf_buffer: Buffer = Buffer()
+        self.tf_listener: TransformListener = TransformListener(self.tf_buffer, self)
 
         self.odometry: Odometry | None = None
         self.goal: PoseStamped | None = None
@@ -97,7 +97,7 @@ class DStarLite(Node):
         self.initialize_d_star_lite()
         path, g, rhs = self.move_and_replan(self.last_position)
 
-        # TODO: Add something to publish the path
+        self.publish_path(path)
 
     def generate_trajectory(self) -> None:
         if self.combined_grid is None:
@@ -150,7 +150,8 @@ class DStarLite(Node):
                             self.global_map.remove_obstacle(node)
             self.new_edges_and_old_costs = vertices
             path, g, rhs = self.move_and_replan(new_position)
-            # TODO: ADD SOMETHING TO PUBLISH THE PATH
+            self.publish_path(path)
+            
             # TODO: FIGURE OUT HOW TO FIX COST TO INCORPORATE RISK
 
     def initialize_global_map(self) -> None:
@@ -317,3 +318,17 @@ class DStarLite(Node):
             self.compute_shortest_path()
         print("path found!")
         return path, self.g, self.rhs
+    
+    def publish_path(self, path: List[Tuple[int, int]]) -> None:
+        """Publishes the computed path as a ROS 2 Path message"""
+        path_msg: Path = Path()
+        path_msg.header.frame_id = "odom"
+        path_msg.header.stamp = self.get_clock().now().to_msg()
+
+        for (gy, gx) in path:
+            pose = PoseStamped()
+            pose.header.frame_id = "odom"
+            pose.pose.position.x = gx * self.resolution + self.origin[0]
+            pose.pose.position.y = gy * self.resolution + self.origin[1]
+            path_msg.poses.append(pose)
+        self.path_publisher.publish(path_msg)

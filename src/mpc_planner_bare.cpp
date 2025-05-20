@@ -24,7 +24,7 @@ public:
         odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/dlio/odom_node/odom", 1, bind(&MPCPlannerCorridors::odometryCallback, this, placeholders::_1));
         path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-            "/planners/a_star_path", 1, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
+            "/planners/sparse_a_star_path", 1, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
         combined_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             "/obstacle_detection/combined_map", 1, bind(&MPCPlannerCorridors::occupancyGridCallback, this, placeholders::_1));
         
@@ -98,7 +98,7 @@ private:
             double dist_squared = pow(point1.pose.position.x - point2.pose.position.x, 2) + pow(point1.pose.position.y - point2.pose.position.y, 2);
             double dist = pow(dist_squared, 0.5);
             double angle = atan2(point2.pose.position.y - point1.pose.position.y, point2.pose.position.x - point1.pose.position.x);
-            double width = 0.5;
+            double width = 0.2;
             vector<pair<double, double>> vertices;
             // points are ordered in counter clockwise order
             vertices.push_back({point1.pose.position.x + width * cos(angle + M_PI/2), 
@@ -162,7 +162,6 @@ private:
             odometry_->pose.pose.position.y, 
             yaw_from_quaternion(odometry_->pose.pose.orientation)}), 3, 1);
         DM final_position = reshape(DM(goal_position), 2, 1);
-        RCLCPP_INFO(this->get_logger(), "Initial Pose: %s", initial_state.get_str().c_str());
         RCLCPP_INFO(this->get_logger(), "Final Pose: %s", final_position.get_str().c_str());
 
         // input bounds

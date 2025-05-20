@@ -71,6 +71,12 @@ private:
         }
 
         path_2d_ = msg;
+
+        if (path_2d_->poses.size() < 2) {
+            RCLCPP_WARN(this->get_logger(), "Path has less than 2 points.");
+            return;
+        }
+        
         vector<double> goal_position = {msg->poses.back().pose.position.x, msg->poses.back().pose.position.y};
 
         // generate cumulative proportion of path length metric

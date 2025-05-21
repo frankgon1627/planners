@@ -51,9 +51,10 @@ class DStarLite(Node):
         self.g: np.ndarray[float] | None = None
         self.g_distance: np.ndarray[float] | None = None
         self.k_m: float = 0.0
+        self.last_iteration_global_index: Tuple[int, int] | None = None
         self.s_start: Tuple[int, int] | None = None
         self.s_goal: Tuple[int, int] | None = None
-        self.last_position: Tuple[int, int] | None = None
+        self.s_last: Tuple[int, int] | None = None
 
         self.get_logger().info("D*-Lite Node Initialized")
 
@@ -107,16 +108,15 @@ class DStarLite(Node):
             # set start position and convert start and goal to grid coordinates
             global_start_i: int = int((self.odometry.pose.pose.position.x - self.global_map_origin[0])/self.resolution)
             global_start_j: int = int((self.odometry.pose.pose.position.y - self.global_map_origin[1])/self.resolution)
-            self.last_position: Tuple[int, int] = (global_start_i, global_start_j)
+            self.last_iteration_global_index: Tuple[int, int] = (global_start_j, global_start_i)
 
             global_goal_i: int = int((self.goal.pose.position.x - self.global_map_origin[0])/self.resolution)
             global_goal_j: int = int((self.goal.pose.position.y - self.global_map_origin[1])/self.resolution)
-            self.s_goal: Tuple[int, int] = (global_goal_i, global_goal_j)
-            self.s_start: Tuple[int, int] = self.last_position
-            self.s_last: Tuple[int, int] = self.last_position
+            self.s_start: Tuple[int, int] = (global_start_j, global_start_i)
+            self.s_goal: Tuple[int, int] = (global_goal_j, global_goal_i)
 
             self.initialize_d_star_lite()
-            path, _, _ = self.move_and_replan(self.last_position)
+            path, _, _ = self.move_and_replan(self.last_iteration_global_index)
 
             self.publish_path(path)
             self.new_goal_received = False
@@ -124,10 +124,10 @@ class DStarLite(Node):
         
         global_start_i: int = int((self.odometry.pose.pose.position.x - self.global_map_origin[0])/self.resolution)
         global_start_j: int = int((self.odometry.pose.pose.position.y - self.global_map_origin[1])/self.resolution)
-        new_position: Tuple[int, int] = (global_start_i, global_start_j)
+        new_position: Tuple[int, int] = (global_start_j, global_start_i)
 
         # TODO: CHECK FOR POSITION OR ORIENTATION CHANGE??? Maybe???
-        if new_position != self.last_position:
+        if new_position != self.last_iteration_global_index:
             # extract the information from the local map
             local_data: List[float] = self.combined_grid.data
             nodes: Dict[Tuple[int, int], float] = {}
@@ -136,7 +136,10 @@ class DStarLite(Node):
                     value: float = local_data[s_j * self.width + s_i]
                     x_position: float = s_i * self.resolution + self.local_origin[0]
                     y_position: float = s_j * self.resolution + self.local_origin[1]
-                    nodes[(x_position, y_position)] = value
+                    # convert to global map index coordinates
+                    global_cell_i: int = int((x_position - self.global_map_origin[0]) / self.resolution)
+                    global_cell_j: int = int((y_position - self.global_map_origin[1]) / self.resolution)
+                    nodes[(global_cell_j, global_cell_i)] = value
 
             vertices: Vertices = Vertices()
             # TODO: GENERAL UPDATE CELL RATHER THAN JUST OBSTACLE AND FREE SPACE TO CONSIDER RISK
@@ -158,7 +161,7 @@ class DStarLite(Node):
                         for u in succ:
                             v.add_edge_with_cost(u, self.c(u, v.pos))
                             vertices.add_vertex(v)
-                            self.global_map.remove_obstacle(node)
+                            self.global_map.remove_obstacle(node, value)
             self.new_edges_and_old_costs = vertices
             path, _, _ = self.move_and_replan(new_position)
             self.publish_path(path)
@@ -304,7 +307,7 @@ class DStarLite(Node):
                 self.s_last = self.s_start
 
                 # for all directed edges (u,v) with changed edge costs
-                vertices = changed_edges_with_old_cost.vertices
+                vertices: List[Vertex] = changed_edges_with_old_cost.vertices
 
                 vertex: Vertex
                 for vertex in vertices:

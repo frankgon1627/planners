@@ -66,9 +66,15 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   scripts/a_star.py
   scripts/jump_point_planner.py
+  scripts/d_star_lite.py
   scripts/occupancy_grid_parser.py
   scripts/mpc_planner_max_approx_cost_risk.py
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY
+  scripts/utils
+  DESTINATION lib/${PROJECT_NAME}/
 )
 
 install(DIRECTORY launch/

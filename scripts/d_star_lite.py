@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import numpy as np
 import tf2_geometry_msgs
 import rclpy
@@ -27,6 +28,7 @@ class DStarLite(Node):
 
         self.odometry: Odometry | None = None
         self.goal: PoseStamped | None = None
+        self.new_goal_received: bool = False
 
         # local map information
         self.combined_grid: OccupancyGrid | None = None
@@ -41,9 +43,10 @@ class DStarLite(Node):
         self.global_map_origin: Tuple[float, float] | None = None
         self.global_map_height: int | None = None
         self.global_map_width: int | None = None
+        self.new_edges_and_old_costs: Vertices | None = None
 
         # D-Star Lite Algorithm variables
-        self.U: PriorityQueue = PriorityQueue()
+        self.U: PriorityQueue | None = None
         self.rhs: np.ndarray[float] | None = None
         self.g: np.ndarray[float] | None = None
         self.g_distance: np.ndarray[float] | None = None
@@ -83,21 +86,7 @@ class DStarLite(Node):
                 except:
                     self.get_logger().warn("Failed to get Transform from base_link to map")
 
-        self.initialize_global_map()
-
-        # set start position and convert start and goal to grid coordinates
-        global_start_i: int = int((self.odometry.pose.pose.position.x - self.global_map_origin[0])/self.resolution)
-        global_start_j: int = int((self.odometry.pose.pose.position.y - self.global_map_origin[1])/self.resolution)
-        self.last_position: Tuple[int, int] = (global_start_i, global_start_j)
-
-        global_goal_i: int = int((self.goal.pose.position.x - self.global_map_origin[0])/self.resolution)
-        global_goal_j: int = int((self.goal.pose.position.y - self.global_map_origin[1])/self.resolution)
-        self.s_goal: Tuple[int, int] = (global_goal_i, global_goal_j)
-
-        self.initialize_d_star_lite()
-        path, g, rhs = self.move_and_replan(self.last_position)
-
-        self.publish_path(path)
+        self.new_goal_received = True
 
     def generate_trajectory(self) -> None:
         if self.combined_grid is None:
@@ -112,10 +101,32 @@ class DStarLite(Node):
             self.get_logger().warn("No Goal Received yet.")
             return
         
+        if self.new_goal_received:
+            self.initialize_global_map()
+
+            # set start position and convert start and goal to grid coordinates
+            global_start_i: int = int((self.odometry.pose.pose.position.x - self.global_map_origin[0])/self.resolution)
+            global_start_j: int = int((self.odometry.pose.pose.position.y - self.global_map_origin[1])/self.resolution)
+            self.last_position: Tuple[int, int] = (global_start_i, global_start_j)
+
+            global_goal_i: int = int((self.goal.pose.position.x - self.global_map_origin[0])/self.resolution)
+            global_goal_j: int = int((self.goal.pose.position.y - self.global_map_origin[1])/self.resolution)
+            self.s_goal: Tuple[int, int] = (global_goal_i, global_goal_j)
+            self.s_start: Tuple[int, int] = self.last_position
+            self.s_last: Tuple[int, int] = self.last_position
+
+            self.initialize_d_star_lite()
+            path, _, _ = self.move_and_replan(self.last_position)
+
+            self.publish_path(path)
+            self.new_goal_received = False
+            return
+        
         global_start_i: int = int((self.odometry.pose.pose.position.x - self.global_map_origin[0])/self.resolution)
         global_start_j: int = int((self.odometry.pose.pose.position.y - self.global_map_origin[1])/self.resolution)
         new_position: Tuple[int, int] = (global_start_i, global_start_j)
 
+        # TODO: CHECK FOR POSITION OR ORIENTATION CHANGE??? Maybe???
         if new_position != self.last_position:
             # extract the information from the local map
             local_data: List[float] = self.combined_grid.data
@@ -129,14 +140,14 @@ class DStarLite(Node):
 
             vertices: Vertices = Vertices()
             # TODO: GENERAL UPDATE CELL RATHER THAN JUST OBSTACLE AND FREE SPACE TO CONSIDER RISK
-            for node, value in node.items():
+            for node, value in nodes.items():
                 # if the node is perceived to be an obstacle
                 if value == 100:
                     if self.global_map.is_unoccupied(node):
                         v: Vertex = Vertex(pos=node)
                         succ: List[Tuple[int, int]] = self.global_map.succ(node)
                         for u in succ:
-                            v.add_edge_with_cost(succ, self.c(u, v.pos))
+                            v.add_edge_with_cost(u, self.c(u, v.pos))
                             vertices.add_vertex(v)
                             self.global_map.set_obstacle(node)
                 # if the node is perceived to be free space
@@ -145,15 +156,13 @@ class DStarLite(Node):
                         v: Vertex = Vertex(pos=node)
                         succ: List[Tuple[int, int]] = self.global_map.succ(node)
                         for u in succ:
-                            v.add_edge_with_cost(succ, self.c(u, v.pos))
+                            v.add_edge_with_cost(u, self.c(u, v.pos))
                             vertices.add_vertex(v)
                             self.global_map.remove_obstacle(node)
             self.new_edges_and_old_costs = vertices
-            path, g, rhs = self.move_and_replan(new_position)
+            path, _, _ = self.move_and_replan(new_position)
             self.publish_path(path)
             
-            # TODO: FIGURE OUT HOW TO FIX COST TO INCORPORATE RISK
-
     def initialize_global_map(self) -> None:
         # initialize all variables relating to the global map
         original_bottom_right_x = self.combined_grid.info.origin.position.x
@@ -180,7 +189,7 @@ class DStarLite(Node):
         global_width = new_top_left_x - new_bottom_right_x
         self.global_map_height = int(global_height / self.resolution)
         self.global_map_width = int(global_width / self.resolution)
-        self.global_map: OccupancyGridMap = OccupancyGridMap(self.global_map_width, self.global_map_height, exploration_setting="8N")
+        self.global_map: OccupancyGridMap = OccupancyGridMap(self.global_map_width, self.global_map_height)
         self.global_map_origin: Tuple[float, float] = (new_bottom_right_x, new_bottom_right_y)
 
     def initialize_d_star_lite(self) -> None:
@@ -191,6 +200,7 @@ class DStarLite(Node):
         self.k_m = 0.0
 
         self.rhs[self.s_goal] = 0.0
+        self.U: PriorityQueue = PriorityQueue()
         self.U.insert(self.s_goal, Priority(heuristic(self.s_start, self.s_goal), 0.0))
 
     def calculate_key(self, s: Tuple[int, int]) -> Tuple[float, float]:
@@ -198,7 +208,7 @@ class DStarLite(Node):
         """Calculates the key for a vertex"""
         k1 = min(self.g[s], self.rhs[s]) + heuristic(self.s_start, s) + self.k_m
         k2 = min(self.g[s], self.rhs[s])
-        return (k1, k2)
+        return Priority(k1, k2)
     
     def c(self, u: Tuple[int, int], v: Tuple[int, int]) -> float:
         """
@@ -260,7 +270,7 @@ class DStarLite(Node):
                     self.update_vertex(u)
 
     def rescan(self) -> Vertices:
-        new_edges_and_old_costs = self.new_edges_and_old_costs
+        new_edges_and_old_costs: Vertices = self.new_edges_and_old_costs
         self.new_edges_and_old_costs = None
         return new_edges_and_old_costs
 
@@ -328,7 +338,17 @@ class DStarLite(Node):
         for (gy, gx) in path:
             pose = PoseStamped()
             pose.header.frame_id = "odom"
-            pose.pose.position.x = gx * self.resolution + self.origin[0]
-            pose.pose.position.y = gy * self.resolution + self.origin[1]
+            pose.pose.position.x = gx * self.resolution + self.global_map_origin[0]
+            pose.pose.position.y = gy * self.resolution + self.global_map_origin[1]
             path_msg.poses.append(pose)
         self.path_publisher.publish(path_msg)
+
+def main():
+    rclpy.init()
+    node = DStarLite()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()

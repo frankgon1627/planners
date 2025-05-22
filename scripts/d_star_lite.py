@@ -140,7 +140,9 @@ class DStarLite(Node):
                     # convert to global map index coordinates
                     global_cell_i: int = int((x_position - self.global_map_origin[0]) / self.resolution)
                     global_cell_j: int = int((y_position - self.global_map_origin[1]) / self.resolution)
-                    nodes[(global_cell_j, global_cell_i)] = value
+
+                    if self.global_map.in_bounds((global_cell_j, global_cell_i)):
+                        nodes[(global_cell_j, global_cell_i)] = value
 
             vertices: Vertices = Vertices()
             # TODO: GENERAL UPDATE CELL RATHER THAN JUST OBSTACLE AND FREE SPACE TO CONSIDER RISK

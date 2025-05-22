@@ -36,27 +36,16 @@ def heuristic(p: Tuple[int, int], q: Tuple[int, int]) -> float:
     """
     return math.sqrt((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2)
 
-def get_movements_4n(x: int, y: int) -> List:
-    """
-    get all possible 4-connectivity movements.
-    :return: list of movements with cost [(dx, dy, movement_cost)]
-    """
-    return [(x + 1, y + 0),
-            (x + 0, y + 1),
-            (x - 1, y + 0),
-            (x + 0, y - 1)]
-
-
-def get_movements_8n(x: int, y: int) -> List:
+def get_movements_8n(y: int, x: int) -> List:
     """
     get all possible 8-connectivity movements.
-    :return: list of movements with cost [(dx, dy, movement_cost)]
+    :return: list of movements with cost [(dy, dx, movement_cost)]
     """
-    return [(x + 1, y + 0),
-            (x + 0, y + 1),
-            (x - 1, y + 0),
-            (x + 0, y - 1),
-            (x + 1, y + 1),
-            (x - 1, y + 1),
-            (x - 1, y - 1),
-            (x + 1, y - 1)]
+    return [(y + 1, x + 0),
+            (y + 0, x + 1),
+            (y - 1, x + 0),
+            (y + 0, x - 1),
+            (y + 1, x + 1),
+            (y - 1, x + 1),
+            (y - 1, x - 1),
+            (y + 1, x - 1)]

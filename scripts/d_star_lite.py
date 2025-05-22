@@ -19,6 +19,7 @@ class DStarLite(Node):
         self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odometry_callback, 10)
         self.create_subscription(OccupancyGrid, '/obstacle_detection/combined_map', self.occupancy_grid_callback, 10)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
+        self.global_map_publisher = self.create_publisher(OccupancyGrid, '/planners/d_star_lite_map', 10)
         self.path_publisher = self.create_publisher(Path, '/planners/d_star_lite_path', 10)
         
         self.create_timer(0.1, self.generate_trajectory)
@@ -165,6 +166,19 @@ class DStarLite(Node):
             self.new_edges_and_old_costs = vertices
             path, _, _ = self.move_and_replan(new_position)
             self.publish_path(path)
+
+        # publish the global map
+        global_map_msg: OccupancyGrid = OccupancyGrid()
+        global_map_msg.header.frame_id = "odom"
+        global_map_msg.header.stamp = self.get_clock().now().to_msg()
+        global_map_msg.info.resolution = self.resolution
+        global_map_msg.info.width = self.global_map_width
+        global_map_msg.info.height = self.global_map_height
+        global_map_msg.info.origin.position.x = self.global_map_origin[0]
+        global_map_msg.info.origin.position.y = self.global_map_origin[1]
+        global_map_msg.info.origin.position.z = self.odometry.pose.pose.position.z
+        global_map_msg.data = self.global_map.occupancy_grid_map.flatten().tolist()
+        self.global_map_publisher.publish(global_map_msg)
             
     def initialize_global_map(self) -> None:
         # initialize all variables relating to the global map
@@ -190,14 +204,14 @@ class DStarLite(Node):
         # construct an empty global planning grid
         global_height = new_top_left_y - new_bottom_right_y
         global_width = new_top_left_x - new_bottom_right_x
-        self.global_map_height = int(global_height / self.resolution)
-        self.global_map_width = int(global_width / self.resolution)
-        self.global_map: OccupancyGridMap = OccupancyGridMap(self.global_map_width, self.global_map_height)
+        self.global_map_height = math.ceil(global_height / self.resolution)
+        self.global_map_width = math.ceil(global_width / self.resolution)
+        self.global_map: OccupancyGridMap = OccupancyGridMap(self.global_map_height, self.global_map_width)
         self.global_map_origin: Tuple[float, float] = (new_bottom_right_x, new_bottom_right_y)
 
     def initialize_d_star_lite(self) -> None:
         # initialize rhs and g arrays
-        self.rhs: np.ndarray[float] = np.inf * np.ones((self.global_map_width, self.global_map_height))
+        self.rhs: np.ndarray[float] = np.inf * np.ones((self.global_map_height, self.global_map_width))
         self.g: np.ndarray[float] = self.rhs.copy()
         self.g_distance: np.ndarray[float] = self.g.copy()
         self.k_m = 0.0

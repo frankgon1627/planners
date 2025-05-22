@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 OBSTACLE = 100
 
 class OccupancyGridMap:
-    def __init__(self, x_dim, y_dim):
+    def __init__(self, y_dim, x_dim):
         """
         set initial values for the map occupancy grid
         |----------> y, column
@@ -13,14 +13,14 @@ class OccupancyGridMap:
         |
         V (x=2, y=0)
         x, row
-        :param x_dim: dimension in the x direction
         :param y_dim: dimension in the y direction
+        :param x_dim: dimension in the x direction
         """
-        self.x_dim = x_dim
         self.y_dim = y_dim
+        self.x_dim = x_dim
 
         # the map extents in units [m]
-        self.map_extents = (x_dim, y_dim)
+        self.map_extents = (y_dim, x_dim)
 
         # the obstacle map
         self.occupancy_grid_map = np.zeros(self.map_extents, dtype=np.uint8)
@@ -43,7 +43,7 @@ class OccupancyGridMap:
         :param cell: cell position (x,y)
         :return: True if within bounds, False else
         """
-        return 0 <= cell[0] < self.x_dim and 0 <= cell[1] < self.y_dim
+        return 0 <= cell[0] < self.y_dim and 0 <= cell[1] < self.x_dim
 
     def filter(self, neighbors: List, avoid_obstacles: bool):
         """
@@ -61,12 +61,12 @@ class OccupancyGridMap:
         :param vertex: vertex you want to find direct successors from
         :return:
         """
-        (x, y) = vertex
+        (y, x) = vertex
 
-        movements = get_movements_8n(x=x, y=y)
+        movements = get_movements_8n(y=y, x=x)
 
         # not needed. Just makes aesthetics to the path
-        if (x + y) % 2 == 0: movements.reverse()
+        if (y + x) % 2 == 0: movements.reverse()
 
         filtered_movements = self.filter(neighbors=movements, avoid_obstacles=avoid_obstacles)
         return list(filtered_movements)
@@ -77,8 +77,8 @@ class OccupancyGridMap:
         :param value: value we wish to set the cell to
         :return: None
         """
-        (x, y) = (round(pos[0]), round(pos[1]))
-        (row, col) = (x, y)
+        (y, x) = (round(pos[0]), round(pos[1]))
+        (row, col) = (y, x)
         self.occupancy_grid_map[row, col] = value
 
     def set_obstacle(self, pos: Tuple[int, int]):
@@ -86,8 +86,8 @@ class OccupancyGridMap:
         :param pos: cell position we wish to set obstacle
         :return: None
         """
-        (x, y) = (round(pos[0]), round(pos[1]))  # make sure pos is int
-        (row, col) = (x, y)
+        (y, x) = (round(pos[0]), round(pos[1]))  # make sure pos is int
+        (row, col) = (y, x)
         self.occupancy_grid_map[row, col] = OBSTACLE
 
     def remove_obstacle(self, pos: Tuple[int, int], value: float):
@@ -95,6 +95,6 @@ class OccupancyGridMap:
         :param pos: position of obstacle
         :return: None
         """
-        (x, y) = (round(pos[0]), round(pos[1]))  # make sure pos is int
-        (row, col) = (x, y)
+        (y, x) = (round(pos[0]), round(pos[1]))  # make sure pos is int
+        (row, col) = (y, x)
         self.occupancy_grid_map[row, col] = value

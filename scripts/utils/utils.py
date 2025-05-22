@@ -15,7 +15,6 @@ class Vertex:
     def edges_and_c_old(self):
         return self.edges_and_costs
 
-
 class Vertices:
     def __init__(self):
         self.list = []

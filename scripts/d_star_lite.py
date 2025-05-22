@@ -145,37 +145,16 @@ class DStarLite(Node):
                     if self.global_map.in_bounds((global_cell_j, global_cell_i)):
                         nodes[(global_cell_j, global_cell_i)] = value
 
-            vertices: Vertices = Vertices()
-            # TODO: GENERAL UPDATE CELL RATHER THAN JUST OBSTACLE AND FREE SPACE TO CONSIDER RISK
-            for node, value in nodes.items():
-                # if the node is perceived to be an obstacle
-                if value == 100:
-                    if self.global_map.is_unoccupied(node):
-                        v: Vertex = Vertex(pos=node)
-                        succ: List[Tuple[int, int]] = self.global_map.succ(node)
-                        for u in succ:
-                            v.add_edge_with_cost(u, self.c(u, v.pos))
-                        vertices.add_vertex(v)
-                        self.global_map.set_obstacle(node)
-                # if the node is perceived to be free space
-                else:
-                    if not self.global_map.is_unoccupied(node):
-                        v: Vertex = Vertex(pos=node)
-                        succ: List[Tuple[int, int]] = self.global_map.succ(node)
-                        for u in succ:
-                            v.add_edge_with_cost(u, self.c(u, v.pos))
-                        vertices.add_vertex(v)
-                        self.global_map.remove_obstacle(node, value)
-
             # update the global map with the new readings
-            # for node, value in nodes.items():
-            #     if self.global_map.occupancy_grid_map[node] != value:
-            #         v: Vertex = Vertex(pos=node)
-            #         succ: List[Tuple[int, int]] = self.global_map.succ(node)
-            #         for u in succ:
-            #             v.add_edge_with_cost(u, self.c(u, v.pos))
-            #         vertices.add_vertex(v)
-            #         self.global_map.update_cell(node, value)
+            vertices: Vertices = Vertices()
+            for node, value in nodes.items():
+                if self.global_map.occupancy_grid_map[node] != value:
+                    v: Vertex = Vertex(pos=node)
+                    succ: List[Tuple[int, int]] = self.global_map.succ(node)
+                    for u in succ:
+                        v.add_edge_with_cost(u, self.c(u, v.pos))
+                    vertices.add_vertex(v)
+                    self.global_map.update_cell(node, value)
             self.new_edges_and_old_costs = vertices
             path, _, _ = self.move_and_replan(new_position)
             self.publish_path(path)
@@ -370,6 +349,7 @@ class DStarLite(Node):
             pose.header.frame_id = "odom"
             pose.pose.position.x = gx * self.resolution + self.global_map_origin[0]
             pose.pose.position.y = gy * self.resolution + self.global_map_origin[1]
+            pose.pose.position.z = self.odometry.pose.pose.position.z
             path_msg.poses.append(pose)
         self.path_publisher.publish(path_msg)
 

@@ -141,6 +141,7 @@ class DStarLite(Node):
                     global_cell_i: int = int((x_position - self.global_map_origin[0]) / self.resolution)
                     global_cell_j: int = int((y_position - self.global_map_origin[1]) / self.resolution)
 
+                    # only update readings that lie within the global map
                     if self.global_map.in_bounds((global_cell_j, global_cell_i)):
                         nodes[(global_cell_j, global_cell_i)] = value
 
@@ -154,8 +155,8 @@ class DStarLite(Node):
                         succ: List[Tuple[int, int]] = self.global_map.succ(node)
                         for u in succ:
                             v.add_edge_with_cost(u, self.c(u, v.pos))
-                            vertices.add_vertex(v)
-                            self.global_map.set_obstacle(node)
+                        vertices.add_vertex(v)
+                        self.global_map.set_obstacle(node)
                 # if the node is perceived to be free space
                 else:
                     if not self.global_map.is_unoccupied(node):
@@ -163,8 +164,18 @@ class DStarLite(Node):
                         succ: List[Tuple[int, int]] = self.global_map.succ(node)
                         for u in succ:
                             v.add_edge_with_cost(u, self.c(u, v.pos))
-                            vertices.add_vertex(v)
-                            self.global_map.remove_obstacle(node, value)
+                        vertices.add_vertex(v)
+                        self.global_map.remove_obstacle(node, value)
+
+            # update the global map with the new readings
+            # for node, value in nodes.items():
+            #     if self.global_map.occupancy_grid_map[node] != value:
+            #         v: Vertex = Vertex(pos=node)
+            #         succ: List[Tuple[int, int]] = self.global_map.succ(node)
+            #         for u in succ:
+            #             v.add_edge_with_cost(u, self.c(u, v.pos))
+            #         vertices.add_vertex(v)
+            #         self.global_map.update_cell(node, value)
             self.new_edges_and_old_costs = vertices
             path, _, _ = self.move_and_replan(new_position)
             self.publish_path(path)

@@ -204,6 +204,7 @@ class AStarPlanner(Node):
             pose.header.frame_id = "odom"
             pose.pose.position.x = gx * self.resolution + self.origin[0]
             pose.pose.position.y = gy * self.resolution + self.origin[1]
+            pose.pose.position.z = self.odometry.pose.pose.position.z
             path_msg.poses.append(pose)
         if sparse:
             self.sparse_path_publisher.publish(path_msg)

@@ -1,5 +1,5 @@
 import numpy as np
-from .utils import get_movements_8n, heuristic, Vertices, Vertex
+from .utils import get_movements_8n
 from typing import Dict, List, Tuple
 
 OBSTACLE = 100

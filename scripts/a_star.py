@@ -135,7 +135,7 @@ class AStarPlanner(Node):
                 if neighbor not in seen:
                     # update cost to include distance to neighbor
                     new_distance_cost: float = distance_cost[location] + ((location[0] - neighbor[0])**2 + (location[1] - neighbor[1])**2)**0.5
-                    new_cost: float = new_distance_cost * self.data[neighbor[0], neighbor[1]]
+                    new_cost: float = new_distance_cost * (1 + self.data[neighbor[0], neighbor[1]])
                     # perform update if we have not seen this node or if we found a shorter path to this node
                     if neighbor not in cost or new_cost < cost[neighbor]:
                         cost[neighbor] = new_cost

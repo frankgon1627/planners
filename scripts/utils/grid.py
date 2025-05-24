@@ -80,21 +80,3 @@ class OccupancyGridMap:
         (y, x) = (round(pos[0]), round(pos[1]))
         (row, col) = (y, x)
         self.occupancy_grid_map[row, col] = value
-
-    def set_obstacle(self, pos: Tuple[int, int]):
-        """
-        :param pos: cell position we wish to set obstacle
-        :return: None
-        """
-        (y, x) = (round(pos[0]), round(pos[1]))  # make sure pos is int
-        (row, col) = (y, x)
-        self.occupancy_grid_map[row, col] = OBSTACLE
-
-    def remove_obstacle(self, pos: Tuple[int, int], value: float):
-        """
-        :param pos: position of obstacle
-        :return: None
-        """
-        (y, x) = (round(pos[0]), round(pos[1]))  # make sure pos is int
-        (row, col) = (y, x)
-        self.occupancy_grid_map[row, col] = value

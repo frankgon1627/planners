@@ -3,6 +3,7 @@ import numpy as np
 import tf2_geometry_msgs
 import rclpy
 import math
+import time
 
 from utils.priority_queue import Priority, PriorityQueue
 from utils.grid import OccupancyGridMap
@@ -16,13 +17,13 @@ from tf2_ros import Buffer, TransformListener
 class DStarLite(Node):
     def __init__(self) -> None:
         super().__init__("dstar_lite")
-        self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odometry_callback, 10)
-        self.create_subscription(OccupancyGrid, '/obstacle_detection/combined_map', self.occupancy_grid_callback, 10)
-        self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
-        self.global_map_publisher = self.create_publisher(OccupancyGrid, '/planners/d_star_lite_map', 10)
-        self.path_publisher = self.create_publisher(Path, '/planners/d_star_lite_path', 10)
+        self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odometry_callback, 1)
+        self.create_subscription(OccupancyGrid, '/obstacle_detection/combined_map', self.occupancy_grid_callback, 1)
+        self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 1)
+        self.global_map_publisher = self.create_publisher(OccupancyGrid, '/planners/d_star_lite_map', 1)
+        self.path_publisher = self.create_publisher(Path, '/planners/d_star_lite_path', 1)
         
-        self.create_timer(0.1, self.generate_trajectory)
+        self.create_timer(0.2, self.generate_trajectory)
 
         self.tf_buffer: Buffer = Buffer()
         self.tf_listener: TransformListener = TransformListener(self.tf_buffer, self)
@@ -50,7 +51,6 @@ class DStarLite(Node):
         self.U: PriorityQueue | None = None
         self.rhs: np.ndarray[float] | None = None
         self.g: np.ndarray[float] | None = None
-        self.g_distance: np.ndarray[float] | None = None
         self.k_m: float = 0.0
         self.last_iteration_global_index: Tuple[int, int] | None = None
         self.s_start: Tuple[int, int] | None = None
@@ -70,7 +70,7 @@ class DStarLite(Node):
         self.height: int = msg.info.height
         self.resolution: float = msg.info.resolution
         self.local_origin: Tuple[float, float] = (msg.info.origin.position.x, msg.info.origin.position.y)
-        self.data: np.ndarray[float] = np.array(msg.data).reshape((self.height, self.width))
+        self.data: np.ndarray[float] = np.array(msg.data).reshape((self.width, self.height))
 
     def goal_callback(self, msg: PoseStamped) -> None:
         """Receives goal position and determines start and goal positions in grid coordinates"""
@@ -78,7 +78,7 @@ class DStarLite(Node):
 
         # convert goal to odom frame if not in odom frame
         if self.goal.header.frame_id != "odom":
-            in_odom_frame = False
+            in_odom_frame: bool = False
             while not in_odom_frame:
                 try:
                     transform = self.tf_buffer.lookup_transform('odom', self.goal.header.frame_id, rclpy.time.Time())
@@ -123,12 +123,14 @@ class DStarLite(Node):
             self.new_goal_received = False
             return
         
+        self.initialize_d_star_lite()
         global_start_i: int = int((self.odometry.pose.pose.position.x - self.global_map_origin[0])/self.resolution)
         global_start_j: int = int((self.odometry.pose.pose.position.y - self.global_map_origin[1])/self.resolution)
         new_position: Tuple[int, int] = (global_start_j, global_start_i)
 
         # TODO: CHECK FOR POSITION OR ORIENTATION CHANGE??? Maybe???
         if new_position != self.last_iteration_global_index:
+            start_time: float = time.time()
             # extract the information from the local map
             local_data: List[float] = self.combined_grid.data
             nodes: Dict[Tuple[int, int], float] = {}
@@ -154,8 +156,10 @@ class DStarLite(Node):
                     for u in succ:
                         v.add_edge_with_cost(u, self.c(u, v.pos))
                     vertices.add_vertex(v)
-                    self.global_map.update_cell(node, value)
+                    # self.global_map.update_cell(node, value)
+                    self.global_map.occupancy_grid_map[node] = value
             self.new_edges_and_old_costs = vertices
+            self.get_logger().info(f"Updated Global Map in {time.time() - start_time:.2f} seconds")
             path, _, _ = self.move_and_replan(new_position)
             self.publish_path(path)
 
@@ -205,7 +209,6 @@ class DStarLite(Node):
         # initialize rhs and g arrays
         self.rhs: np.ndarray[float] = np.inf * np.ones((self.global_map_height, self.global_map_width))
         self.g: np.ndarray[float] = self.rhs.copy()
-        self.g_distance: np.ndarray[float] = self.g.copy()
         self.k_m = 0.0
 
         self.rhs[self.s_goal] = 0.0
@@ -215,6 +218,7 @@ class DStarLite(Node):
     def calculate_key(self, s: Tuple[int, int]) -> Tuple[float, float]:
         # TODO: FIX THE COST TO MATCH A* COST
         """Calculates the key for a vertex"""
+        risk_cost: float = 1 + self.global_map.occupancy_grid_map[s]
         k1 = min(self.g[s], self.rhs[s]) + heuristic(self.s_start, s) + self.k_m
         k2 = min(self.g[s], self.rhs[s])
         return Priority(k1, k2)
@@ -227,7 +231,9 @@ class DStarLite(Node):
         :return: euclidean distance to traverse. inf if obstacle in path
         """
         # TODO: FIX THE COST TO MATCH A* COST
-        if not self.global_map.is_unoccupied(u) or not self.global_map.is_unoccupied(v):
+        u_occupied: bool = self.global_map.occupancy_grid_map[u] == 100
+        v_occupied: bool = self.global_map.occupancy_grid_map[v] == 100
+        if u_occupied or v_occupied:
             return float('inf')
         else:
             return heuristic(u, v)
@@ -245,6 +251,7 @@ class DStarLite(Node):
             self.U.remove(u)
 
     def compute_shortest_path(self):
+        start_time: float = time.time()
         # TODO: FIX THE COST TO MATCH A* COST
         while self.U.top_key() < self.calculate_key(self.s_start) or self.rhs[self.s_start] > self.g[self.s_start]:
             u = self.U.top()
@@ -276,14 +283,11 @@ class DStarLite(Node):
                                 if min_s > temp:
                                     min_s = temp
                             self.rhs[s] = min_s
-                    self.update_vertex(u)
-
-    def rescan(self) -> Vertices:
-        new_edges_and_old_costs: Vertices = self.new_edges_and_old_costs
-        self.new_edges_and_old_costs = None
-        return new_edges_and_old_costs
+                    self.update_vertex(s)
+        self.get_logger().info(f"Shortest Path Computed in {time.time() - start_time:.2f} seconds")
 
     def move_and_replan(self, robot_position: Tuple[int, int]):
+        start_time: float = time.time()
         # TODO: FIX THE COST TO MATCH A* COST
         path: List[Tuple[int, int]] = [robot_position]
         self.s_start: Tuple[int, int] = robot_position
@@ -305,10 +309,17 @@ class DStarLite(Node):
             ### algorithm sometimes gets stuck here for some reason !!! FIX
             self.s_start = arg_min
             path.append(self.s_start)
-            # scan graph for changed costs
-            changed_edges_with_old_cost: Vertices = self.rescan()
+
+            # extract the changed costs
+            if self.new_edges_and_old_costs is None:
+                changed_edges_with_old_cost = Vertices()
+            else:
+                changed_edges_with_old_cost = self.new_edges_and_old_costs
+            self.new_edges_and_old_costs = None
+
             # if any edge costs changed
-            if changed_edges_with_old_cost:
+            start_time_changed: float = time.time()
+            if changed_edges_with_old_cost.vertices:
                 self.k_m += heuristic(self.s_last, self.s_start)
                 self.s_last = self.s_start
 
@@ -333,8 +344,10 @@ class DStarLite(Node):
                                     if min_s > temp:
                                         min_s = temp
                                 self.rhs[u] = min_s
-                            self.update_vertex(u)
-            self.compute_shortest_path()
+                        self.update_vertex(u)
+                self.get_logger().info(f"Updated changed edges in {time.time() - start_time_changed:.2f} seconds")
+                self.compute_shortest_path()
+        self.get_logger().info(f"Path found in {time.time() - start_time:.2f} seconds")
         print("path found!")
         return path, self.g, self.rhs
     
@@ -345,7 +358,7 @@ class DStarLite(Node):
         path_msg.header.stamp = self.get_clock().now().to_msg()
 
         for (gy, gx) in path:
-            pose = PoseStamped()
+            pose: PoseStamped = PoseStamped()
             pose.header.frame_id = "odom"
             pose.pose.position.x = gx * self.resolution + self.global_map_origin[0]
             pose.pose.position.y = gy * self.resolution + self.global_map_origin[1]
@@ -355,7 +368,7 @@ class DStarLite(Node):
 
 def main():
     rclpy.init()
-    node = DStarLite()
+    node: DStarLite = DStarLite()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()

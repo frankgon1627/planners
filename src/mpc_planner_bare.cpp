@@ -6,6 +6,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/polygon.hpp>
 #include <geometry_msgs/msg/point32.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <decomp_ros_util/data_ros_utils.hpp>
 #include <decomp_ros_msgs/msg/polyhedron_array.hpp>
@@ -47,16 +48,7 @@ private:
         height_ = combined_map_->info.height;
         width_ = combined_map_->info.width;
         resolution_ = combined_map_->info.resolution;
-
-        global_to_lower_left_ = reshape(DM({
-                                        combined_map_->info.origin.position.x,
-                                        combined_map_->info.origin.position.y,
-                                        0.0}), 3, 1);
-        lower_left_to_risk_center_ = reshape(DM({
-                                            height_*resolution_/2,
-                                            width_*resolution_/2,
-                                            0.0}), 3, 1);
-        global_risk_to_center_ = global_to_lower_left_ - lower_left_to_risk_center_;
+        origin_ = combined_map_->info.origin;
     }
 
     void pathCallback(const nav_msgs::msg::Path::SharedPtr msg) {
@@ -70,9 +62,26 @@ private:
             return;
         }
 
-        path_2d_ = msg;
+        full_path_2d_ = msg;
+        
+        // trim the path to only include points in the map
+        path_2d_ = nav_msgs::msg::Path();
+        path_2d_.header = msg->header;
+        path_2d_.header.stamp = this->now();
+        path_2d_.header.frame_id = "odom";
+        for (const auto& pose : msg->poses) {
+            double x = pose.pose.position.x;
+            double y = pose.pose.position.y;
+            if (x >= origin_.position.x && x <= origin_.position.x + resolution_ * width_ &&
+                y >= origin_.position.y && y <= origin_.position.y + resolution_ * height_) {
+                path_2d_.poses.push_back(pose);
+            }
+            else{
+                break;
+            }
+        }
 
-        if (path_2d_->poses.size() < 2) {
+        if (path_2d_.poses.size() < 2) {
             RCLCPP_WARN(this->get_logger(), "Path has less than 2 points. Publishing stationary path.");
             nav_msgs::msg::Path stationary_path;
             stationary_path.header.stamp = this->now();
@@ -96,9 +105,9 @@ private:
         // generate cumulative proportion of path length metric
         vector<double> cum_distances;
         double total_distance = 0.0;
-        for (unsigned int i=0; i<path_2d_->poses.size() - 1; ++i){
-            geometry_msgs::msg::PoseStamped& point1 = path_2d_->poses[i];
-            geometry_msgs::msg::PoseStamped& point2 = path_2d_->poses[i+1];
+        for (unsigned int i=0; i<path_2d_.poses.size() - 1; ++i){
+            geometry_msgs::msg::PoseStamped& point1 = path_2d_.poses[i];
+            geometry_msgs::msg::PoseStamped& point2 = path_2d_.poses[i+1];
             double dist_squared = pow(point1.pose.position.x - point2.pose.position.x, 2) + pow(point1.pose.position.y - point2.pose.position.y, 2);
             double dist = pow(dist_squared, 0.5);
             total_distance += dist;
@@ -112,23 +121,24 @@ private:
         
         // set up rectangle around each line segment in the path
         vector<vector<pair<double, double>>> corridors_vertices;
-        for (unsigned int i=0; i<path_2d_->poses.size() - 1; ++i){
-            geometry_msgs::msg::PoseStamped& point1 = path_2d_->poses[i];
-            geometry_msgs::msg::PoseStamped& point2 = path_2d_->poses[i+1];
+        for (unsigned int i=0; i<path_2d_.poses.size() - 1; ++i){
+            geometry_msgs::msg::PoseStamped& point1 = path_2d_.poses[i];
+            geometry_msgs::msg::PoseStamped& point2 = path_2d_.poses[i+1];
             double dist_squared = pow(point1.pose.position.x - point2.pose.position.x, 2) + pow(point1.pose.position.y - point2.pose.position.y, 2);
-            double dist = pow(dist_squared, 0.5);
+            double 1 = pow(dist_squared, 0.5);
             double angle = atan2(point2.pose.position.y - point1.pose.position.y, point2.pose.position.x - point1.pose.position.x);
             double width = 0.2;
+            double height = 0.05;
             vector<pair<double, double>> vertices;
             // points are ordered in counter clockwise order
-            vertices.push_back({point1.pose.position.x + width * cos(angle + M_PI/2), 
-                                point1.pose.position.y + width * sin(angle + M_PI/2)});
-            vertices.push_back({point1.pose.position.x - width * cos(angle + M_PI/2), 
-                                point1.pose.position.y - width * sin(angle + M_PI/2)});
-            vertices.push_back({point2.pose.position.x - width * cos(angle + M_PI/2), 
-                                point2.pose.position.y - width * sin(angle + M_PI/2)});
-            vertices.push_back({point2.pose.position.x + width * cos(angle + M_PI/2), 
-                                point2.pose.position.y + width * sin(angle + M_PI/2)});
+            vertices.push_back({point1.pose.position.x + width * cos(angle + M_PI/2) - height * sin(angle + M_PI/2), 
+                                point1.pose.position.y + width * sin(angle + M_PI/2) + height * cos(angle + M_PI/2)});
+            vertices.push_back({point1.pose.position.x - width * cos(angle + M_PI/2) - height * sin(angle + M_PI/2), 
+                                point1.pose.position.y - width * sin(angle + M_PI/2) + height * cos(angle + M_PI/2)});
+            vertices.push_back({point2.pose.position.x - width * cos(angle + M_PI/2) + height * sin(angle + M_PI/2), 
+                                point2.pose.position.y - width * sin(angle + M_PI/2) - height * cos(angle + M_PI/2)});
+            vertices.push_back({point2.pose.position.x + width * cos(angle + M_PI/2) + height * sin(angle + M_PI/2), 
+                                point2.pose.position.y + width * sin(angle + M_PI/2) - height * cos(angle + M_PI/2)});
             corridors_vertices.push_back(vertices);
         }
 
@@ -215,7 +225,7 @@ private:
         MX initial_state_constraint = reshape(X(Slice(), 0) - initial_state, -1, 1);
 
         // final state constraint
-        MX final_state_constraint = reshape(X(Slice(0, 2), N_) - final_position, -1, 1);
+        //MX final_state_constraint = reshape(X(Slice(0, 2), N_) - final_position, -1, 1);
 
         // initial control constraint
         MX initial_control_constraint = reshape(U(Slice(), 0), -1, 1);
@@ -257,7 +267,7 @@ private:
         
         MX equality_constraints = vertcat(
             initial_state_constraint, 
-            final_state_constraint,
+            //final_state_constraint,
             initial_control_constraint,
             final_control_constraint,
             dynamics_constraint,
@@ -275,7 +285,7 @@ private:
         // Set constraint bounds
         DM zero_bg_constraints = vertcat(
             DM::zeros(initial_state_constraint.size1(), 1), 
-            DM::zeros(final_state_constraint.size1(), 1),
+            //DM::zeros(final_state_constraint.size1(), 1),
             DM::zeros(initial_control_constraint.size1(), 1),
             DM::zeros(final_control_constraint.size1(), 1),
             DM::zeros(dynamics_constraint.size1(), 1));
@@ -308,13 +318,13 @@ private:
                 ++path_index;
             }
             
-            if (path_index >= path_2d_->poses.size() - 1) {
-                path_index = path_2d_->poses.size() - 2;
+            if (path_index >= path_2d_.poses.size() - 1) {
+                path_index = path_2d_.poses.size() - 2;
             }
             
             double segment_alpha = (alpha - segment_start) / (path_proportions[path_index] - segment_start);
-            geometry_msgs::msg::PoseStamped& point1 = path_2d_->poses[path_index];
-            geometry_msgs::msg::PoseStamped& point2 = path_2d_->poses[path_index + 1];
+            geometry_msgs::msg::PoseStamped& point1 = path_2d_.poses[path_index];
+            geometry_msgs::msg::PoseStamped& point2 = path_2d_.poses[path_index + 1];
             
             initial_guess(3 * i) = (1 - segment_alpha) * point1.pose.position.x + segment_alpha * point2.pose.position.x;
             initial_guess(3 * i + 1) = (1 - segment_alpha) * point1.pose.position.y + segment_alpha * point2.pose.position.y;
@@ -411,11 +421,10 @@ private:
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr mpc_path_points_;
 
     nav_msgs::msg::Odometry::SharedPtr odometry_;
-    nav_msgs::msg::Path::SharedPtr path_2d_;
+    nav_msgs::msg::Path::SharedPtr full_path_2d_;
+    nav_msgs::msg::Path path_2d_;
     nav_msgs::msg::OccupancyGrid::SharedPtr combined_map_;
-    DM global_to_lower_left_;
-    DM lower_left_to_risk_center_;
-    DM global_risk_to_center_;
+    geometry_msgs::msg::Pose origin_;
     int height_;
     int width_;
     double resolution_;

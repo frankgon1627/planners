@@ -134,7 +134,7 @@ class AStarPlanner(Node):
 
         if dense_path:
             self.publish_path(dense_path, sparse=False)
-            sparse_path: np.ndarray[float] = self.douglas_peucker(dense_path, 0.25)
+            sparse_path: np.ndarray[float] = self.douglas_peucker(dense_path, 0.35)
             self.publish_path(sparse_path, sparse=True)
 
         # publish the global map

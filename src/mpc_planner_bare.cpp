@@ -124,8 +124,6 @@ private:
         for (unsigned int i=0; i<path_2d_.poses.size() - 1; ++i){
             geometry_msgs::msg::PoseStamped& point1 = path_2d_.poses[i];
             geometry_msgs::msg::PoseStamped& point2 = path_2d_.poses[i+1];
-            double dist_squared = pow(point1.pose.position.x - point2.pose.position.x, 2) + pow(point1.pose.position.y - point2.pose.position.y, 2);
-            double 1 = pow(dist_squared, 0.5);
             double angle = atan2(point2.pose.position.y - point1.pose.position.y, point2.pose.position.x - point1.pose.position.x);
             double width = 0.2;
             double height = 0.05;

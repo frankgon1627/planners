@@ -13,6 +13,7 @@ find_package(rclpy REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(obstacle_detection_msgs REQUIRED)
 find_package(custom_msgs_pkg REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(decomp_ros_util REQUIRED)
@@ -46,6 +47,7 @@ ament_target_dependencies(mpc_planner_bare
   sensor_msgs 
   nav_msgs 
   geometry_msgs
+  obstacle_detection_msgs
   visualization_msgs
   custom_msgs_pkg
   decomp_ros_util

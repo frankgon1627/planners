@@ -10,6 +10,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <decomp_ros_util/data_ros_utils.hpp>
 #include <decomp_ros_msgs/msg/polyhedron_array.hpp>
+#include <obstacle_detection_msgs/msg/risk_map.hpp>
 #include <custom_msgs_pkg/msg/polygon_array.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <pcl_conversions/pcl_conversions.h>
@@ -26,7 +27,7 @@ public:
             "/dlio/odom_node/odom", 1, bind(&MPCPlannerCorridors::odometryCallback, this, placeholders::_1));
         path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
             "/planners/sparse_a_star_path", 1, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
-        combined_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
+        combined_map_sub_ = this->create_subscription<obstacle_detection_msgs::msg::RiskMap>(
             "/obstacle_detection/combined_map", 1, bind(&MPCPlannerCorridors::occupancyGridCallback, this, placeholders::_1));
         
         travel_corridors_pub_ = this->create_publisher<decomp_ros_msgs::msg::PolyhedronArray>(
@@ -43,7 +44,7 @@ private:
         odometry_ = msg;
     }
 
-    void occupancyGridCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg){
+    void occupancyGridCallback(const obstacle_detection_msgs::msg::RiskMap::SharedPtr msg){
         combined_map_ = msg;
         height_ = combined_map_->info.height;
         width_ = combined_map_->info.width;
@@ -413,7 +414,7 @@ private:
 
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
-    rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr combined_map_sub_;
+    rclcpp::Subscription<obstacle_detection_msgs::msg::RiskMap>::SharedPtr combined_map_sub_;
     rclcpp::Publisher<decomp_ros_msgs::msg::PolyhedronArray>::SharedPtr travel_corridors_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr mpc_path_pub_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr mpc_path_points_;
@@ -421,7 +422,7 @@ private:
     nav_msgs::msg::Odometry::SharedPtr odometry_;
     nav_msgs::msg::Path::SharedPtr full_path_2d_;
     nav_msgs::msg::Path path_2d_;
-    nav_msgs::msg::OccupancyGrid::SharedPtr combined_map_;
+    obstacle_detection_msgs::msg::RiskMap::SharedPtr combined_map_;
     geometry_msgs::msg::Pose origin_;
     int height_;
     int width_;

@@ -5,6 +5,7 @@ from heapq import heappush, heappop
 from rclpy.node import Node
 from nav_msgs.msg import OccupancyGrid, Path, Odometry
 from geometry_msgs.msg import PoseStamped
+from obstacle_detection_msgs.msg import RiskMap
 from tf2_ros import Buffer, TransformListener
 import tf2_geometry_msgs
 from typing import Dict, Tuple, List
@@ -15,9 +16,10 @@ class AStarPlanner(Node):
     def __init__(self) -> None:
         super().__init__('a_star_planner')
         self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odometry_callback, 10)
-        self.create_subscription(OccupancyGrid, '/obstacle_detection/combined_map', self.occupancy_grid_callback, 10)
+        self.create_subscription(RiskMap, '/obstacle_detection/combined_map', self.occupancy_grid_callback, 10)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
-        self.global_map_publisher = self.create_publisher(OccupancyGrid, '/planners/a_star_map', 1)
+        self.global_map_publisher = self.create_publisher(RiskMap, '/planners/a_star_map', 1)
+        self.global_map_rviz_publisher = self.create_publisher(OccupancyGrid, '/planners/a_star_map_rviz', 1)
         self.path_publisher = self.create_publisher(Path, '/planners/a_star_path', 10)
         self.sparse_path_publisher = self.create_publisher(Path, '/planners/sparse_a_star_path', 10)
 
@@ -26,22 +28,23 @@ class AStarPlanner(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.odometry: Odometry | None = None
-        self.local_map: OccupancyGrid | None = None
+        self.local_map: RiskMap | None = None
         self.local_map_width: int | None = None
         self.local_map_height: int | None = None
         self.local_map_origin: Tuple[float] | None = None
-        self.local_map_data: np.ndarray[int] | None = None
+        self.local_map_data: np.ndarray[float] | None = None
         self.resolution: float | None = None
+        self.risk_factor: float = 1.0
 
         self.goal: PoseStamped | None = None
         self.new_goal_received: bool = False
 
         # global map that accumulates all the observations
-        self.global_map: OccupancyGrid | None = None
+        self.global_map: RiskMap | None = None
         self.global_map_origin: Tuple[float, float] | None = None
         self.global_map_height: int | None = None
         self.global_map_width: int | None = None
-        self.global_map_data: np.ndarray[int] | None = None
+        self.global_map_data: np.ndarray[float] | None = None
 
         self.directions: List[Tuple[int]] = [
             (1, 0), (-1, 0), (0, 1), (0, -1), 
@@ -54,13 +57,13 @@ class AStarPlanner(Node):
         """Processes Odometry messages from ROS 2"""
         self.odometry = msg
         
-    def occupancy_grid_callback(self, msg: OccupancyGrid) -> None:
-        """Processes OccupancyGrid messages from ROS 2"""
-        self.local_map: OccupancyGrid = msg
+    def occupancy_grid_callback(self, msg: RiskMap) -> None:
+        """Processes CombinedRiskMap messages from ROS 2"""
+        self.local_map: RiskMap = msg
         self.local_map_width: int = msg.info.width
         self.local_map_height: int = msg.info.height
         self.local_map_origin: Tuple[float] = (msg.info.origin.position.x, msg.info.origin.position.y)
-        self.local_map_data: np.ndarray[int] = np.array(msg.data).reshape((self.local_map_height, self.local_map_width))
+        self.local_map_data: np.ndarray[float] = np.array(msg.data).reshape((self.local_map_height, self.local_map_width))
         self.resolution: float = msg.info.resolution
 
     def goal_callback(self, msg: PoseStamped) -> None:
@@ -109,7 +112,7 @@ class AStarPlanner(Node):
 
         start_time: float = time.time()
         # extract the information from the local map
-        local_data: np.ndarray[int] = self.local_map_data
+        local_data: np.ndarray[float] = self.local_map_data
         nodes: Dict[Tuple[int, int], float] = {}
         for s_i in range(self.local_map_width):
             for s_j in range(self.local_map_height):
@@ -128,7 +131,6 @@ class AStarPlanner(Node):
         for node, value in nodes.items():
             if self.global_map_data[node] != value:
                 self.global_map_data[node] = value
-        self.get_logger().info(f"Updated Global Map in {time.time() - start_time:.2f} seconds")
 
         dense_path: List[Tuple[int, int]] = self.a_star(start, goal)
 
@@ -136,6 +138,9 @@ class AStarPlanner(Node):
             self.publish_path(dense_path, sparse=False)
             sparse_path: np.ndarray[float] = self.douglas_peucker(dense_path, 0.35)
             self.publish_path(sparse_path, sparse=True)
+            self.get_logger().info("Published Path")
+        else:
+            self.get_logger().warn("No Path Found")
 
         # publish the global map
         self.global_map.header.frame_id = "odom"
@@ -143,6 +148,18 @@ class AStarPlanner(Node):
         self.global_map.info.origin.position.z = self.odometry.pose.pose.position.z
         self.global_map.data = self.global_map_data.flatten().tolist()
         self.global_map_publisher.publish(self.global_map)
+        # publish the global map for RViz visualization
+        occupancy_grid_msg: OccupancyGrid = OccupancyGrid()
+        occupancy_grid_msg.header.frame_id = "odom"
+        occupancy_grid_msg.header.stamp = self.get_clock().now().to_msg()
+        occupancy_grid_msg.info.resolution = self.global_map.info.resolution
+        occupancy_grid_msg.info.width = self.global_map.info.width
+        occupancy_grid_msg.info.height = self.global_map.info.height
+        occupancy_grid_msg.info.origin.position.x = self.global_map.info.origin.position.x
+        occupancy_grid_msg.info.origin.position.y = self.global_map.info.origin.position.y
+        occupancy_grid_msg.info.origin.position.z = self.global_map.info.origin.position.z
+        occupancy_grid_msg.data = self.global_map_data.astype(np.int8).flatten().tolist()
+        self.global_map_rviz_publisher.publish(occupancy_grid_msg)
 
     def initialize_global_map(self) -> None:
         # initialize all variables relating to the global map
@@ -171,14 +188,14 @@ class AStarPlanner(Node):
         global_width = new_top_left_x - new_bottom_right_x
         self.global_map_height = math.ceil(global_height / self.resolution)
         self.global_map_width = math.ceil(global_width / self.resolution)
-        self.global_map: OccupancyGrid = OccupancyGrid()
+        self.global_map: RiskMap = RiskMap()
         self.global_map.info.resolution = self.resolution
         self.global_map.info.width = self.global_map_width
         self.global_map.info.height = self.global_map_height
         self.global_map.info.origin.position.x = new_bottom_right_x
         self.global_map.info.origin.position.y = new_bottom_right_y
         self.global_map.info.origin.position.z = self.odometry.pose.pose.position.z
-        self.global_map_data: np.ndarray[int] = np.zeros((self.global_map_height, self.global_map_width), dtype=np.uint8)
+        self.global_map_data: np.ndarray[float] = np.zeros((self.global_map_height, self.global_map_width), dtype=np.float32)
 
     def is_valid(self, y: int, x: int) -> bool:
         """Checks if a position is within bounds and not an obstacle"""
@@ -217,7 +234,7 @@ class AStarPlanner(Node):
                 if neighbor not in seen:
                     # update cost to include distance to neighbor
                     new_distance_cost: float = distance_cost[location] + ((location[0] - neighbor[0])**2 + (location[1] - neighbor[1])**2)**0.5
-                    new_cost: float = new_distance_cost * (1 + self.global_map_data[neighbor[0], neighbor[1]])
+                    new_cost: float = new_distance_cost * (1 + self.risk_factor*self.global_map_data[neighbor[0], neighbor[1]])
                     # perform update if we have not seen this node or if we found a shorter path to this node
                     if neighbor not in cost or new_cost < cost[neighbor]:
                         cost[neighbor] = new_cost

@@ -83,7 +83,13 @@ private:
         }
 
         if (path_2d_.poses.size() < 2) {
-            RCLCPP_WARN(this->get_logger(), "Path has less than 2 points. Publishing stationary path.");
+            if (path_2d_.poses.size() == 1){
+                RCLCPP_WARN(this->get_logger(), "Path has 1 point. Publishing stationary path.");
+            }
+            if (path_2d_.poses.size() == 0){
+                RCLCPP_WARN(this->get_logger(), "Path has 0 points. Publishing stationary path.");
+            }
+            
             nav_msgs::msg::Path stationary_path;
             stationary_path.header.stamp = this->now();
             stationary_path.header.frame_id = "odom";

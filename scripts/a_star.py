@@ -133,11 +133,11 @@ class AStarPlanner(Node):
                 self.global_map_data[node] = value
 
         dense_path: List[Tuple[int, int]] = self.a_star(start, goal)
+        sparse_path: np.ndarray[float] = self.douglas_peucker(dense_path, 0.35)
+        self.publish_path(dense_path, sparse=False)
+        self.publish_path(sparse_path, sparse=True)
 
         if dense_path:
-            self.publish_path(dense_path, sparse=False)
-            sparse_path: np.ndarray[float] = self.douglas_peucker(dense_path, 0.35)
-            self.publish_path(sparse_path, sparse=True)
             self.get_logger().info("Published Path")
         else:
             self.get_logger().warn("No Path Found")
@@ -292,19 +292,21 @@ class AStarPlanner(Node):
             sparse_path = np.vstack([path[0], path[-1]])
         return sparse_path
 
-    def publish_path(self, path: List[Tuple[int, int]], sparse: bool = False) -> None:
+    def publish_path(self, path: List[Tuple[int, int]] | None, sparse: bool = False) -> None:
         """Publishes the computed path as a ROS 2 Path message"""
         path_msg: Path = Path()
         path_msg.header.frame_id = "odom"
         path_msg.header.stamp = self.get_clock().now().to_msg()
 
-        for (gy, gx) in path:
-            pose = PoseStamped()
-            pose.header.frame_id = "odom"
-            pose.pose.position.x = gx * self.resolution + self.global_map_origin[0]
-            pose.pose.position.y = gy * self.resolution + self.global_map_origin[1]
-            pose.pose.position.z = self.odometry.pose.pose.position.z
-            path_msg.poses.append(pose)
+        if path is not None:
+            for (gy, gx) in path:
+                pose = PoseStamped()
+                pose.header.frame_id = "odom"
+                pose.pose.position.x = gx * self.resolution + self.global_map_origin[0]
+                pose.pose.position.y = gy * self.resolution + self.global_map_origin[1]
+                pose.pose.position.z = self.odometry.pose.pose.position.z
+                path_msg.poses.append(pose)
+        
         if sparse:
             self.sparse_path_publisher.publish(path_msg)
         else:

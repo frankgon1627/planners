@@ -23,7 +23,7 @@ class AStarPlanner(Node):
         self.path_publisher = self.create_publisher(Path, '/planners/a_star_path', 10)
         self.sparse_path_publisher = self.create_publisher(Path, '/planners/sparse_a_star_path', 10)
 
-        self.timer = self.create_timer(0.2, self.generate_trajectory)
+        self.timer = self.create_timer(1,0, self.generate_trajectory)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 

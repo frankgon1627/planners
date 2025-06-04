@@ -23,7 +23,7 @@ class AStarPlanner(Node):
         self.path_publisher = self.create_publisher(Path, '/planners/a_star_path', 10)
         self.sparse_path_publisher = self.create_publisher(Path, '/planners/sparse_a_star_path', 10)
 
-        self.timer = self.create_timer(0.1, self.generate_trajectory)
+        self.timer = self.create_timer(0.2, self.generate_trajectory)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
@@ -110,7 +110,6 @@ class AStarPlanner(Node):
         start: Tuple[int, int] = (global_start_j, global_start_i)
         goal: Tuple[int, int] = (global_goal_j, global_goal_i)
 
-        start_time: float = time.time()
         # extract the information from the local map
         local_data: np.ndarray[float] = self.local_map_data
         nodes: Dict[Tuple[int, int], float] = {}

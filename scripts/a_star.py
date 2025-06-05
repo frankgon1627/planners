@@ -15,15 +15,15 @@ import time
 class AStarPlanner(Node):
     def __init__(self) -> None:
         super().__init__('a_star_planner')
-        self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odometry_callback, 10)
-        self.create_subscription(RiskMap, '/obstacle_detection/combined_map', self.occupancy_grid_callback, 10)
+        self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odometry_callback, 1)
+        self.create_subscription(RiskMap, '/obstacle_detection/combined_map', self.occupancy_grid_callback, 1)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
         self.global_map_publisher = self.create_publisher(RiskMap, '/planners/a_star_map', 1)
         self.global_map_rviz_publisher = self.create_publisher(OccupancyGrid, '/planners/a_star_map_rviz', 1)
         self.path_publisher = self.create_publisher(Path, '/planners/a_star_path', 10)
         self.sparse_path_publisher = self.create_publisher(Path, '/planners/sparse_a_star_path', 10)
 
-        self.timer = self.create_timer(1,0, self.generate_trajectory)
+        self.timer = self.create_timer(1.0, self.generate_trajectory)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
@@ -52,10 +52,6 @@ class AStarPlanner(Node):
         ]
 
         self.get_logger().info("A* Planner Node Initialized")
-
-    def odometry_callback(self, msg: Odometry) -> None:
-        """Processes Odometry messages from ROS 2"""
-        self.odometry = msg
         
     def occupancy_grid_callback(self, msg: RiskMap) -> None:
         """Processes CombinedRiskMap messages from ROS 2"""
@@ -83,6 +79,10 @@ class AStarPlanner(Node):
                     self.get_logger().warn("Failed to get Transform from base_link to map")
 
         self.new_goal_received = True
+
+    def odometry_callback(self, msg: Odometry) -> None:
+        """Processes Odometry messages from ROS 2"""
+        self.odometry = msg
 
     def generate_trajectory(self) -> None:
         if self.local_map is None:

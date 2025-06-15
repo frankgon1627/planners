@@ -24,11 +24,11 @@ class MPCPlannerCorridors: public rclcpp::Node{
 public:
     MPCPlannerCorridors(): Node("mpc_planner_corridors"){
         odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/dlio/odom_node/odom", 1, bind(&MPCPlannerCorridors::odometryCallback, this, placeholders::_1));
+            "/dlio/odom_node/odom", 1, bind(&MPCPlannerCorridors::odometry_callback, this, placeholders::_1));
         path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-            "/planners/sparse_a_star_path", 1, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
+            "/planners/sparse_a_star_path", 1, bind(&MPCPlannerCorridors::path_callback, this, placeholders::_1));
         combined_map_sub_ = this->create_subscription<obstacle_detection_msgs::msg::RiskMap>(
-            "/obstacle_detection/combined_map", 1, bind(&MPCPlannerCorridors::occupancyGridCallback, this, placeholders::_1));
+            "/obstacle_detection/combined_map", 1, bind(&MPCPlannerCorridors::occupancy_grid_callback, this, placeholders::_1));
         
         travel_corridors_pub_ = this->create_publisher<decomp_ros_msgs::msg::PolyhedronArray>(
             "/polyhedron_array", 10);
@@ -40,11 +40,11 @@ public:
     }
 
 private:
-    void odometryCallback(const nav_msgs::msg::Odometry::SharedPtr msg){
+    void odometry_callback(const nav_msgs::msg::Odometry::SharedPtr msg){
         odometry_ = msg;
     }
 
-    void occupancyGridCallback(const obstacle_detection_msgs::msg::RiskMap::SharedPtr msg){
+    void occupancy_grid_callback(const obstacle_detection_msgs::msg::RiskMap::SharedPtr msg){
         combined_map_ = msg;
         height_ = combined_map_->info.height;
         width_ = combined_map_->info.width;
@@ -52,7 +52,7 @@ private:
         origin_ = combined_map_->info.origin;
     }
 
-    void pathCallback(const nav_msgs::msg::Path::SharedPtr msg) {
+    void path_callback(const nav_msgs::msg::Path::SharedPtr msg) {
         if (!odometry_) {
             RCLCPP_WARN(this->get_logger(), "No Odometry Received Yet.");
             return;

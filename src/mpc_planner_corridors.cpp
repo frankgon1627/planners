@@ -21,13 +21,13 @@ class MPCPlannerCorridors: public rclcpp::Node{
 public:
     MPCPlannerCorridors(): Node("mpc_planner_corridors"){
         odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/dlio/odom_node/odom", 1, bind(&MPCPlannerCorridors::odometryCallback, this, placeholders::_1));
+            "/dlio/odom_node/odom", 1, bind(&MPCPlannerCorridors::odometry_callback, this, placeholders::_1));
         polygon_sub_ = this->create_subscription<custom_msgs_pkg::msg::PolygonArray>(
-            "/convex_hulls", 1, bind(&MPCPlannerCorridors::polygonsCallback, this, placeholders::_1));
+            "/convex_hulls", 1, bind(&MPCPlannerCorridors::polygons_callback, this, placeholders::_1));
         risk_map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-            "/obstacle_detection/filtered_risk_map", 1, bind(&MPCPlannerCorridors::riskMapCallback, this, placeholders::_1));
+            "/obstacle_detection/filtered_risk_map", 1, bind(&MPCPlannerCorridors::risk_map_callback, this, placeholders::_1));
         path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-            "/planners/jump_point_path", 1, bind(&MPCPlannerCorridors::pathCallback, this, placeholders::_1));
+            "/planners/jump_point_path", 1, bind(&MPCPlannerCorridors::path_callback, this, placeholders::_1));
 
         travel_corridors_pub_ = this->create_publisher<decomp_ros_msgs::msg::PolyhedronArray>(
             "/polyhedron_array", 10);
@@ -39,11 +39,11 @@ public:
     }
 
 private:
-    void odometryCallback(const nav_msgs::msg::Odometry::SharedPtr msg){
+    void odometry_callback(const nav_msgs::msg::Odometry::SharedPtr msg){
         odometry_ = msg;
     }
 
-    void polygonsCallback(const custom_msgs_pkg::msg::PolygonArray::SharedPtr msg) {
+    void polygons_callback(const custom_msgs_pkg::msg::PolygonArray::SharedPtr msg) {
         for (const geometry_msgs::msg::Polygon& polygon: msg->polygons){
             for (size_t i=0; i < polygon.points.size(); ++i){
                 geometry_msgs::msg::Point32 point1 = polygon.points[i];
@@ -65,7 +65,7 @@ private:
         }
     }
 
-    void riskMapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg){
+    void risk_map_callback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg){
         risk_map_ = msg;
         height_ = risk_map_->info.height;
         width_ = risk_map_->info.width;
@@ -82,7 +82,7 @@ private:
         global_risk_to_center_ = global_to_lower_left_ - lower_left_to_risk_center_;
     }
 
-    void pathCallback(const nav_msgs::msg::Path::SharedPtr msg) {
+    void path_callback(const nav_msgs::msg::Path::SharedPtr msg) {
         if (!odometry_) {
             RCLCPP_WARN(this->get_logger(), "No Odometry Received Yet.");
             return;
@@ -93,7 +93,7 @@ private:
             return;
         }
 
-	    path_2d_ = vec_Vec2f{};
+        path_2d_ = vec_Vec2f{};
         for (const geometry_msgs::msg::PoseStamped& pose : msg->poses) {
             path_2d_.emplace_back(pose.pose.position.x, pose.pose.position.y);
         }

@@ -20,6 +20,8 @@ find_package(decomp_ros_util REQUIRED)
 find_package(decomp_util REQUIRED)
 find_package(decomp_ros_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(casadi REQUIRED)
 
 add_executable(mpc_planner_corridors src/mpc_planner_corridors.cpp)
@@ -57,9 +59,20 @@ ament_target_dependencies(mpc_planner_bare
   casadi
 )
 
+add_executable(a_star src/a_star.cpp)
+ament_target_dependencies(a_star
+  rclcpp
+  nav_msgs
+  geometry_msgs
+  obstacle_detection_msgs
+  tf2_ros
+  tf2_geometry_msgs
+)
+
 install(TARGETS
   mpc_planner_corridors
   mpc_planner_bare
+  a_star
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -10,7 +10,7 @@ def generate_launch_description():
         ),
         Node(
             package='planners',
-            executable='a_star.py',
+            executable='a_star',
             name='a_star',
             shell=True
         )
